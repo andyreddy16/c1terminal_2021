@@ -55,7 +55,7 @@ class AlgoStrategy(gamelib.AlgoCore):
         """
         game_state = gamelib.GameState(self.config, turn_state)
         gamelib.debug_write('Performing turn {} of your custom algo strategy'.format(game_state.turn_number))
-        game_state.suppress_warnings(True)  # Comment or remove this line to enable warnings.
+        # game_state.suppress_warnings(True)  # Comment or remove this line to enable warnings.
 
         self.starter_strategy(game_state)
 
@@ -75,27 +75,59 @@ class AlgoStrategy(gamelib.AlgoCore):
 
         """
         # If health is very low (and enemy is high), build turrets
+        gamelib.debug_write("Attempting defensive recovery.")
         self.immediate_defensive_recovery(game_state)
 
         # Place initial defensive structure in beginning
         if game_state.turn_number < 2:
-            num_turrets = game_state.MP * 0.8 * 2 / 3  # assume 1 wall cost for each turret (2 cost)
+            gamelib.debug_write("Setup initial defense")
+            gamelib.debug_write("SP points: " + str(game_state.get_resource(SP, 0)))
+            num_turrets = int(game_state.get_resource(1, 0) * 0.8 * 2 / 3)  # assume 1 wall cost for each turret (2 cost)
+            gamelib.debug_write("Num turrets" + str(num_turrets))
             self.setup_initial_defense(num_turrets, game_state, True)
 
         # Move turrets to locations where enemy scored (check which places have no scores)
+        gamelib.debug_write("Reconfigure turrets.")
         self.reconfigure_turrets(game_state)
 
         # If opponents has low MP, build more supports. Else, more turrets and walls.
 
+        # If the turn is less than 5, stall with interceptors and wait to see enemy's base
+        if game_state.turn_number < 5:
+            self.stall_with_interceptors(game_state)
+        else:
+            # Now let's analyze the enemy base to see where their defenses are concentrated.
+            # If they have many units in the front we can build a line for our demolishers to attack them at long range.
+            if self.detect_enemy_unit(game_state, unit_type=None, valid_x=None, valid_y=[14, 15]) > 10:
+                self.demolisher_line_strategy(game_state)
+            else:
+                # They don't have many units in the front so lets figure out their least defended area and send Scouts there.
+
+                # Only spawn Scouts every other turn
+                # Sending more at once is better since attacks can only hit a single scout at a time
+                if game_state.turn_number % 2 == 1:
+                    # To simplify we will just check sending them from back left and right
+                    scout_spawn_location_options = [[13, 0], [14, 0]]
+                    best_location = self.least_damage_spawn_location(game_state, scout_spawn_location_options)
+                    game_state.attempt_spawn(SCOUT, best_location, 1000)
+
+                # Lastly, if we have spare SP, let's build some Factories to generate more resources
+                support_locations = [[13, 2], [14, 2], [13, 3], [14, 3]]
+                game_state.attempt_spawn(SUPPORT, support_locations)
+
     def immediate_defensive_recovery(self, game_state):
         if game_state.my_health < game_state.enemy_health and game_state.my_health < 10:
             # deploy turrets at locations where hurt
-            self.build_reactive_defense()
+            self.build_reactive_defense(game_state)
 
     def setup_initial_defense(self, num_turrets, game_state, upgrade=False):
         # add turrets in middle
+        if (num_turrets == 0):
+            return
         turret_middle_locations = [[8, 11], [19, 11], [13, 11], [14, 11]]
-        num_turrets -= self.attempt_spawn_num(TURRET, num_turrets, turret_middle_locations, game_state)
+        turrets_added = self.attempt_spawn_num(TURRET, num_turrets, turret_middle_locations, game_state)
+        gamelib.debug_write("Turrets added " + str(turrets_added))
+        num_turrets -= turrets_added
 
         gamelib.debug_write("Upgrade " + str(upgrade))
         if upgrade:
@@ -134,32 +166,36 @@ class AlgoStrategy(gamelib.AlgoCore):
 
     def attempt_spawn_num(self, unit_type, num, locations, game_state):
         spawned = 0
+        gamelib.debug_write("HERE." + str(num))
+        gamelib.debug_write(locations)
         if len(locations) == 0:
-            return
+            gamelib.debug_write("Zero locations!")
+            return 0
         for location in locations:
             if spawned == num:
                 break
             one_spawn = game_state.attempt_spawn(unit_type, location)
             if one_spawn > 0:
-                TURRET_LOCATIONS.append(location)
+                gamelib.debug_write("Spawned: " + str(one_spawn))
+                gamelib.debug_write(TURRET_LOCATIONS)
                 spawned += one_spawn
         return spawned
 
     def reconfigure_turrets(self, game_state):
         turrets_to_remove = []
-        if len(self.scored_on_locations) * 2 > game_state.MP * 0.6:
-            for turret_location in TURRET_LOCATIONS:
-                if TURRET == game_state.contains_stationary_unit(turret_location):
-                    if turret_location not in self.scored_on_locations:
-                        can_remove = True
-                        for scored_on in self.scored_on_locations:
-                            if game_state.game_map.distance_between_locations(turret_location, scored_on) < 0:
-                                can_remove = False
-                                break
-                        if can_remove:
-                            turrets_to_remove.append(turret_location)
-                else:
-                    TURRET_LOCATIONS.remove(turret_location)
+        # if len(self.scored_on_locations) * 2 > game_state.get_resource(SP, 0) * 0.6:
+        for turret_location in TURRET_LOCATIONS:
+            if TURRET == game_state.contains_stationary_unit(turret_location):
+                if turret_location not in self.scored_on_locations:
+                    can_remove = True
+                    for scored_on in self.scored_on_locations:
+                        if game_state.game_map.distance_between_locations(turret_location, scored_on) < 0:
+                            can_remove = False
+                            break
+                    if can_remove:
+                        turrets_to_remove.append(turret_location)
+            # else:
+                # TURRET_LOCATIONS.remove(turret_location)
 
         game_state.attempt_remove(turrets_to_remove)
 

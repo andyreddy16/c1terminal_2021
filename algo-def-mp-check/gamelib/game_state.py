@@ -370,7 +370,7 @@ class GameState:
         if num < 1:
             self.warn("Attempted to spawn fewer than one units! ({})".format(num))
             return
-        if isinstance(locations, list) or len(locations) == 0:
+        if not isinstance(locations, list) or len(locations) == 0:
             return 0
       
         if type(locations[0]) == int:
@@ -404,7 +404,7 @@ class GameState:
 
         """
 
-        if isinstance(locations, list) or len(locations) == 0:
+        if not isinstance(locations, list) or len(locations) == 0:
             return 0
 
         if type(locations[0]) == int:
