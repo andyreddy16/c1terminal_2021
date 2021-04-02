@@ -75,20 +75,24 @@ class AlgoStrategy(gamelib.AlgoCore):
 
         """
         # If health is very low (and enemy is high), build turrets
-        gamelib.debug_write("Attempting defensive recovery.")
-        self.immediate_defensive_recovery(game_state)
+        if game_state.my_health < 12 and game_state.enemy_health > 15:
+            gamelib.debug_write("Attempting defensive recovery.")
+            self.immediate_defensive_recovery(game_state)
 
         # Place initial defensive structure in beginning
         if game_state.turn_number < 2:
             gamelib.debug_write("Setup initial defense")
-            gamelib.debug_write("SP points: " + str(game_state.get_resource(SP, 0)))
-            num_turrets = int(game_state.get_resource(1, 0) * 0.8 * 2 / 3)  # assume 1 wall cost for each turret (2 cost)
+            num_turrets = 10  # assume 1 wall cost for each turret (2 cost)
             gamelib.debug_write("Num turrets" + str(num_turrets))
-            self.setup_initial_defense(num_turrets, game_state, True)
+            self.setup_initial_defense(num_turrets, game_state, False)
 
-        # Move turrets to locations where enemy scored (check which places have no scores)
-        gamelib.debug_write("Reconfigure turrets.")
-        self.reconfigure_turrets(game_state)
+        if game_state.get_resource(MP, 1) < 4 or game_state.enemy_health < 15:
+            self.offensive_supports(game_state.game_map.BOTTOM_LEFT, game_state)
+            self.deploy_demolishers(game_state, game_state.game_map.BOTTOM_LEFT)
+        else:
+            # Move turrets to locations where enemy scored (check which places have no scores)
+            gamelib.debug_write("Reconfigure turrets.")
+            self.reconfigure_turrets(game_state)
 
         # If opponents has low MP, build more supports. Else, more turrets and walls.
 
@@ -116,15 +120,46 @@ class AlgoStrategy(gamelib.AlgoCore):
                 game_state.attempt_spawn(SUPPORT, support_locations)
 
     def immediate_defensive_recovery(self, game_state):
-        if game_state.my_health < game_state.enemy_health and game_state.my_health < 10:
             # deploy turrets at locations where hurt
             self.build_reactive_defense(game_state)
 
+    def offensive_supports(self, side, game_state):
+        support_locations_right = [[23, 11], [22, 10], [21, 9], [20, 8], [19, 7], [18, 6], [17, 5], [16, 4], [15, 3], [14, 2], [13, 1]]
+        support_locations_right.reverse()
+        support_locations_left = [[4, 11], [5, 10], [6, 9], [7, 8], [8, 7], [9, 6], [10, 5], [11, 4], [12, 3], [13, 2], [14, 1]]
+        support_locations_left.reverse()
+
+        if side == game_state.game_map.BOTTOM_LEFT:
+            game_state.attempt_remove(support_locations_left)
+        else:
+            game_state.attemp_remove(support_locations_right)
+
+        num_supports = game_state.number_affordable(SUPPORT)
+        if num_supports < len(support_locations_right) - 2:
+            sp_needed = (len(support_locations_right) - 2 - num_supports) * game_state.type_cost(SUPPORT)[0]
+            num_turrets_remove = sp_needed / (game_state.type_cost(TURRET)[0]) * 0.9
+            self.attempt_remove_num(num_turrets_remove, TURRET_LOCATIONS, game_state)
+
+        if game_state.game_map.BOTTOM_LEFT == side:
+            game_state.attempt_spawn(SUPPORT, support_locations_left)
+        else:
+            game_state.attempt_spawn(SUPPORT, support_locations_right)
+
+    def deploy_demolishers(self, game_state, side):
+        right_deploy_location = [13, 0]
+        left_deploy_location = [14, 0]
+        deploy_location = left_deploy_location
+        if side == game_state.game_map.BOTTOM_RIGHT:
+            deploy_location = right_deploy_location
+
+        game_state.attempt_spawn(DEMOLISHER, deploy_location, 1000)
+
     def setup_initial_defense(self, num_turrets, game_state, upgrade=False):
         # add turrets in middle
-        if (num_turrets == 0):
+        if num_turrets == 0:
             return
-        turret_middle_locations = [[8, 11], [19, 11], [13, 11], [14, 11]]
+        # turret_middle_locations = [[8, 11], [19, 11], [13, 11], [14, 11]]
+        turret_middle_locations = [[0, 13], [27, 13], [4, 11], [23, 11], [6, 9], [10, 9], [17, 9], [21, 9], [13, 6], [14, 6]]
         turrets_added = self.attempt_spawn_num(TURRET, num_turrets, turret_middle_locations, game_state)
         gamelib.debug_write("Turrets added " + str(turrets_added))
         num_turrets -= turrets_added
@@ -134,6 +169,7 @@ class AlgoStrategy(gamelib.AlgoCore):
             upgraded = game_state.attempt_upgrade(turret_middle_locations)
             gamelib.debug_write("Number upgraded: " + str(upgraded))
         # add turrets at corners
+        """
         right_empty = True
         left_empty = True
         turret_right_corner = [[27, 13], [26, 13], [25, 13]]
@@ -149,9 +185,9 @@ class AlgoStrategy(gamelib.AlgoCore):
             num_turrets -= self.attempt_spawn_num(TURRET, 1, turret_right_corner, game_state)
         if left_empty and num_turrets > 0:
             num_turrets -= self.attempt_spawn_num(TURRET, 1, turret_left_corner, game_state)
+        """
 
-        self.place_walls_front_of_turrets(turret_middle_locations + turret_left_corner + turret_right_corner,
-                                          game_state)
+        self.place_walls_front_of_turrets(turret_middle_locations, game_state)
 
     def place_walls_front_of_turrets(self, locations, game_state):
         wall_locations = []
@@ -177,9 +213,24 @@ class AlgoStrategy(gamelib.AlgoCore):
             one_spawn = game_state.attempt_spawn(unit_type, location)
             if one_spawn > 0:
                 gamelib.debug_write("Spawned: " + str(one_spawn))
-                gamelib.debug_write(TURRET_LOCATIONS)
                 spawned += one_spawn
         return spawned
+
+    def attempt_remove_num(self, num, locations, game_state):
+        removed = 0
+        gamelib.debug_write("Removing number of units: " + str(num))
+        gamelib.debug_write(locations)
+        if len(locations) == 0:
+            gamelib.debug_write("Zero locations!")
+            return 0
+        for location in locations:
+            if removed == num:
+                break
+            one_spawn = game_state.attempt_remove(location)
+            if one_spawn > 0:
+                gamelib.debug_write("Removed: " + str(one_spawn))
+                removed += one_spawn
+        return removed
 
     def reconfigure_turrets(self, game_state):
         turrets_to_remove = []
@@ -231,6 +282,7 @@ class AlgoStrategy(gamelib.AlgoCore):
             # Build turret one space above so that it doesn't block our own edge spawn locations
             build_location = [location[0], location[1] + 1]
             game_state.attempt_spawn(TURRET, build_location)
+            game_state.attempt_spawn(WALL, build_location)
 
     def stall_with_interceptors(self, game_state):
         """
