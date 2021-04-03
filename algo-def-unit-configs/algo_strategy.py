@@ -43,9 +43,6 @@ class AlgoStrategy(gamelib.AlgoCore):
         SP = 0
         # This is a good place to do initial setup
         self.scored_on_locations = []
-        self.turret_locations = []
-        self.wall_locations = []
-        self.support_locations = []
         self.add_supports = False
         self.ready_attack = False
 
@@ -61,9 +58,9 @@ class AlgoStrategy(gamelib.AlgoCore):
         gamelib.debug_write('Performing turn {} of your custom algo strategy'.format(game_state.turn_number))
         game_state.suppress_warnings(True)  # Comment or remove this line to enable warnings.
 
-        self.update_locations(TURRET, game_state)
-        self.update_locations(WALL, game_state)
-        self.update_locations(SUPPORT, game_state)
+        game_state.update_loc(TURRET)
+        game_state.update_loc(WALL)
+        game_state.update_loc(SUPPORT)
         self.starter_strategy(game_state)
 
         game_state.submit_turn()
@@ -94,7 +91,7 @@ class AlgoStrategy(gamelib.AlgoCore):
             self.ready_attack = True
             return
 
-        self.block_middle_with_walls(3, 15, game_state)
+        self.block_middle_with_walls(3, int(game_state.get_resource(SP, 0) * 0.3), game_state)
         self.add_corner_turrets(True, game_state)
         self.add_v_turret_configuration(game_state)
         self.upgrade_top_turrets(4, game_state)
@@ -104,13 +101,17 @@ class AlgoStrategy(gamelib.AlgoCore):
 
         self.build_reactive_defense(game_state)
 
+        gamelib.debug_write("POSITIONS")
+        gamelib.debug_write(game_state.turret_locations)
+
     def build_attack(self, game_state):
         left_channel = [[5, 10], [6, 9], [7, 8], [8, 7], [9, 6], [10, 5], [11, 4], [12, 3], [13, 2], [13, 1]]
         left_channel.reverse()
         game_state.attempt_spawn(SUPPORT, left_channel)
+
         game_state.attempt_spawn(WALL, left_channel)  # in case not enough SP
 
-        interceptor_loc = [6, 7]
+        interceptor_loc = [5, 8]
         game_state.attempt_spawn(INTERCEPTOR, interceptor_loc)
 
         scout_loc = [12, 1]
@@ -118,16 +119,20 @@ class AlgoStrategy(gamelib.AlgoCore):
 
     def refund_structures(self, unit_type, game_state, include_upgraded=False):
         remove_locs = []
-        locations = []
 
         if unit_type == TURRET:
-            locations = self.turret_locations
+            locations = game_state.turret_locations
         elif unit_type == WALL:
-            locations = self.wall_locations
+            locations = game_state.wall_locations
         elif unit_type == SUPPORT:
-            locations == self.support_locations
+            locations = game_state.support_locations
         else:
             return
+
+        game_state.update_loc(unit_type)
+
+        gamelib.debug_write(locations)
+        gamelib.debug_write(game_state.turret_locations)
 
         for loc in locations:
             for unit in game_state.game_map[loc[0], loc[1]]:
@@ -163,15 +168,13 @@ class AlgoStrategy(gamelib.AlgoCore):
         left_turrets = [[5, 12], [6, 11], [8, 9], [10, 7]]
         right_turrets = [[22, 12], [21, 11], [19, 9], [17, 7]]
         middle_turrets = [[12, 9], [15, 9]]
-        turret_locations = middle_turrets + left_turrets + right_turrets
+        sides_zipped = [item for pair in zip(left_turrets, right_turrets) for item in pair]
+        turret_locations = middle_turrets + sides_zipped
         game_state.attempt_spawn(TURRET, turret_locations)
 
     def upgrade_top_turrets(self, num, game_state):
-        self.update_locations(TURRET, game_state)
-
         # sort list by largest y value
-        sorted_turrets = sorted(self.turret_locations, key=lambda x: x[1], reverse=True)
-
+        sorted_turrets = sorted(game_state.turret_locations, key=lambda x: x[1], reverse=True)
         upgraded = 0
 
         for loc in sorted_turrets:
@@ -333,13 +336,12 @@ class AlgoStrategy(gamelib.AlgoCore):
         sp_possible = self.calculate_possible_SP(game_state)
         if sp_possible < sp:
             return False
-        for turret_loc in self.turret_locations:
+        for turret_loc in game_state.turret_locations:
             game_state.attempt_remove(turret_loc)
 
     def calculate_possible_SP(self, game_state):
-        self.update_locations(TURRET, game_state)
         sp = game_state.get_resource(SP, 0)
-        for turret_loc in self.turret_locations:
+        for turret_loc in game_state.turret_locations:
             for unit in game_state.game_map[turret_loc[0], turret_loc[1]]:
                 if unit.unit_type == TURRET and not unit.upgraded:
                     sp += unit.cost[0]
@@ -347,16 +349,12 @@ class AlgoStrategy(gamelib.AlgoCore):
 
     def prepare_offensive_hit(self, game_state):
         # remove non-upgraded turrets for offensive hit
-        indices_to_remove = []
-        for turret_loc in self.turret_locations:
+        for turret_loc in game_state.turret_locations:
             for unit in game_state.game_map[turret_loc[0], turret_loc[1]]:
                 if unit.unit_type == TURRET and not unit.upgraded:
-                    indices_to_remove.append(self.turret_locations.index(turret_loc))
                     removed = game_state.attempt_remove(turret_loc)
                     gamelib.debug_write("Removed: " + str(removed))
 
-        for index in sorted(indices_to_remove, reverse=True):
-            del self.turret_locations[index]
         self.add_supports = True
         self.add_support_channel(game_state)
 
@@ -370,8 +368,6 @@ class AlgoStrategy(gamelib.AlgoCore):
 
         for loc in support_locations_left:
             spawned = game_state.attempt_spawn(SUPPORT, loc)
-            if spawned == 1:
-                self.support_locations.append(loc)
 
     def send_interceptors(self, num, game_state):
         left_pos = [[4, 9], [5, 8], [6, 7], [7, 6], [8, 5], [9, 4]]
@@ -400,10 +396,8 @@ class AlgoStrategy(gamelib.AlgoCore):
         turret_locations = [[0, 13], [27, 13], [4, 11], [23, 11], [7, 9], [20, 9], [9, 7], [18, 7], [13, 6], [14, 6]]
         # attempt_spawn will try to spawn units if we have resources, and will check if a blocking unit is already there
         game_state.attempt_spawn(TURRET, turret_locations)
-        self.add_structure_units(turret_locations, game_state)
 
-        self.update_locations(TURRET, game_state)
-        self.add_walls_to_turrets(self.turret_locations, game_state)
+        self.add_walls_to_turrets(game_state.turret_locations, game_state)
 
     def add_walls_to_turrets(self, turret_locations, game_state):
         for loc in turret_locations:
@@ -411,36 +405,6 @@ class AlgoStrategy(gamelib.AlgoCore):
             gamelib.debug_write("Wall locations to add.")
             gamelib.debug_write(wall_loc)
             spawned = game_state.attempt_spawn(WALL, wall_loc)
-            gamelib.debug_write(spawned)
-            if spawned == len(wall_loc):
-                self.wall_locations.extend(wall_loc)
-            elif spawned > 0:
-                self.add_structure_units(wall_loc, game_state)
-
-    def add_structure_units(self, locations, game_state):
-        """
-        Updates list of structure unit positions. Will not remove any from list, even if not there anymore.
-        """
-        for location in locations:
-            # does this update immediately, or based on previous round?
-            unit_type = game_state.contains_stationary_unit(location)
-            if unit_type == TURRET and location not in self.turret_locations:
-                self.turret_locations.append(location)
-            elif unit_type == WALL and location not in self.wall_locations:
-                self.wall_locations.append(location)
-            elif unit_type == SUPPORT and location not in self.support_locations:
-                self.support_locations.append(location)
-
-    def update_locations(self, unit_type, game_state):
-        if unit_type == TURRET:
-            self.turret_locations[:] = (loc for loc in self.turret_locations if
-                                        game_state.contains_stationary_unit(loc) == TURRET)
-        if unit_type == WALL:
-            self.wall_locations[:] = (loc for loc in self.wall_locations if
-                                      game_state.contains_stationary_unit(loc) == WALL)
-        if unit_type == SUPPORT:
-            self.support_locations[:] = (loc for loc in self.support_locations if
-                                         game_state.contains_stationary_unit(loc) == SUPPORT)
 
     def build_reactive_defense(self, game_state):
         """
@@ -452,8 +416,6 @@ class AlgoStrategy(gamelib.AlgoCore):
             # Build turret one space above so that it doesn't block our own edge spawn locations
             build_location = [location[0], location[1] + 1]
             spawned = game_state.attempt_spawn(TURRET, build_location)
-            if spawned == 1 and build_location not in self.turret_locations:
-                self.turret_locations.append(location)
 
     def stall_with_interceptors(self, game_state):
         """

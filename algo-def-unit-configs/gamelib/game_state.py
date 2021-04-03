@@ -7,6 +7,7 @@ from .util import send_command, debug_write
 from .unit import GameUnit
 from .game_map import GameMap
 
+
 def is_stationary(unit_type):
     """
         Args:
@@ -16,6 +17,7 @@ def is_stationary(unit_type):
             Boolean, True if the unit is stationary, False otherwise.
     """
     return unit_type in STRUCTURE_TYPES
+
 
 class GameState:
     """Represents the entire gamestate for a given turn
@@ -89,13 +91,17 @@ class GameState:
         MP = self.MP
         SP = self.SP
 
+        self.turret_locations = []
+        self.wall_locations = []
+        self.support_locations = []
+
         self.game_map = GameMap(self.config)
         self._shortest_path_finder = ShortestPathFinder()
         self._build_stack = []
         self._deploy_stack = []
         self._player_resources = [
-                {'SP': 0, 'MP': 0},  # player 0, which is you
-                {'SP': 0, 'MP': 0}]  # player 1, which is the opponent
+            {'SP': 0, 'MP': 0},  # player 0, which is you
+            {'SP': 0, 'MP': 0}]  # player 1, which is the opponent
         self.__parse_state(serialized_string)
 
     def __parse_state(self, state_line):
@@ -140,14 +146,14 @@ class GameState:
                 # This depends on RM and UP always being the last types to be processed
                 if unit_type == REMOVE:
                     # Quick fix will deploy engine fix soon
-                    if self.contains_stationary_unit([x,y]):
-                        self.game_map[x,y][0].pending_removal = True
+                    if self.contains_stationary_unit([x, y]):
+                        self.game_map[x, y][0].pending_removal = True
                 elif unit_type == UPGRADE:
-                    if self.contains_stationary_unit([x,y]):
-                        self.game_map[x,y][0].upgrade()
+                    if self.contains_stationary_unit([x, y]):
+                        self.game_map[x, y][0].upgrade()
                 else:
                     unit = GameUnit(unit_type, self.config, player_number, hp, x, y)
-                    self.game_map[x,y].append(unit)
+                    self.game_map[x, y].append(unit)
 
     def __resource_required(self, unit_type):
         return self.SP if is_stationary(unit_type) else self.MP
@@ -166,8 +172,10 @@ class GameState:
         self._player_resources[player_index][resource_key] = held_resource + amount
 
     def _invalid_player_index(self, index):
-        self.warn("Invalid player index {} passed, player index should always be 0 (yourself) or 1 (your opponent)".format(index))
-    
+        self.warn(
+            "Invalid player index {} passed, player index should always be 0 (yourself) or 1 (your opponent)".format(
+                index))
+
     def _invalid_unit(self, unit):
         self.warn("Invalid unit {}".format(unit))
 
@@ -180,7 +188,7 @@ class GameState:
         send_command(build_string)
         send_command(deploy_string)
 
-    def get_resource(self, resource_type, player_index = 0):
+    def get_resource(self, resource_type, player_index=0):
         """Gets a players resources
 
         Args:
@@ -205,7 +213,7 @@ class GameState:
         resources = self._player_resources[player_index]
         return resources.get(resource_key, None)
 
-    def get_resources(self, player_index = 0):
+    def get_resources(self, player_index=0):
         """Gets a players resources as a list
 
         Args:
@@ -264,7 +272,8 @@ class GameState:
         """
 
         if turns_in_future < 1 or turns_in_future > 99:
-            self.warn("Invalid turns in future used ({}). Turns in future should be between 1 and 99".format(turns_in_future))
+            self.warn(
+                "Invalid turns in future used ({}). Turns in future should be between 1 and 99".format(turns_in_future))
         if not player_index == 1 and not player_index == 0:
             self._invalid_player_index(player_index)
         if type(current_MP) == int and current_MP < 0:
@@ -295,14 +304,14 @@ class GameState:
         if unit_type == REMOVE:
             self._invalid_unit(unit_type)
             return
-        
+
         unit_def = self.config["unitInformation"][UNIT_TYPE_TO_INDEX[unit_type]]
         cost_base = [unit_def.get('cost1', 0), unit_def.get('cost2', 0)]
         if upgrade:
-            return [unit_def.get('upgrade', {}).get('cost1', cost_base[SP]), unit_def.get('upgrade', {}).get('cost2', cost_base[MP])]
+            return [unit_def.get('upgrade', {}).get('cost1', cost_base[SP]),
+                    unit_def.get('upgrade', {}).get('cost2', cost_base[MP])]
 
         return cost_base
-
 
     def can_spawn(self, unit_type, location, num=1):
         """Check if we can spawn a unit at a location. 
@@ -323,7 +332,7 @@ class GameState:
         if unit_type not in ALL_UNITS:
             self._invalid_unit(unit_type)
             return
-        
+
         if not self.game_map.in_arena_bounds(location):
             if self.enable_warnings:
                 self.warn("Could not spawn {} at location {}. Location invalid.".format(unit_type, location))
@@ -331,9 +340,12 @@ class GameState:
 
         affordable = self.number_affordable(unit_type) >= num
         stationary = is_stationary(unit_type)
-        blocked = self.contains_stationary_unit(location) or (stationary and len(self.game_map[location[0],location[1]]) > 0)
+        blocked = self.contains_stationary_unit(location) or (
+                    stationary and len(self.game_map[location[0], location[1]]) > 0)
         correct_territory = location[1] < self.HALF_ARENA
-        on_edge = location in (self.game_map.get_edge_locations(self.game_map.BOTTOM_LEFT) + self.game_map.get_edge_locations(self.game_map.BOTTOM_RIGHT))
+        on_edge = location in (
+                    self.game_map.get_edge_locations(self.game_map.BOTTOM_LEFT) + self.game_map.get_edge_locations(
+                self.game_map.BOTTOM_RIGHT))
 
         if self.enable_warnings:
             fail_reason = ""
@@ -372,7 +384,7 @@ class GameState:
             return
         if not isinstance(locations, list) or len(locations) == 0:
             return 0
-      
+
         if type(locations[0]) == int:
             locations = [locations]
         spawned_units = 0
@@ -386,6 +398,7 @@ class GameState:
                     self.game_map.add_unit(unit_type, location, 0)
                     if is_stationary(unit_type):
                         self._build_stack.append((unit_type, x, y))
+                        self.add_loc(unit_type, location)
                     else:
                         self._deploy_stack.append((unit_type, x, y))
                     spawned_units += 1
@@ -412,10 +425,14 @@ class GameState:
         for location in locations:
             if location[1] < self.HALF_ARENA and self.contains_stationary_unit(location):
                 x, y = map(int, location)
+                for unit in self.game_map[x, y]:
+                    unit_type = unit.unit_type
                 self._build_stack.append((REMOVE, x, y))
                 removed_units += 1
+                self.remove_loc(unit_type, location)
             else:
-                self.warn("Could not remove a unit from {}. Location has no structures or is enemy territory.".format(location))
+                self.warn("Could not remove a unit from {}. Location has no structures or is enemy territory.".format(
+                    location))
         return removed_units
 
     def attempt_upgrade(self, locations):
@@ -438,11 +455,12 @@ class GameState:
             if location[1] < self.HALF_ARENA and self.contains_stationary_unit(location):
                 x, y = map(int, location)
                 existing_unit = None
-                for unit in self.game_map[x,y]:
+                for unit in self.game_map[x, y]:
                     if unit.stationary:
                         existing_unit = unit
 
-                if not existing_unit.upgraded and self.config["unitInformation"][UNIT_TYPE_TO_INDEX[existing_unit.unit_type]].get("upgrade", None) is not None:
+                if not existing_unit.upgraded and self.config["unitInformation"][
+                    UNIT_TYPE_TO_INDEX[existing_unit.unit_type]].get("upgrade", None) is not None:
                     costs = self.type_cost(existing_unit.unit_type, True)
                     resources = self.get_resources()
                     if resources[SP] >= costs[SP] and resources[MP] >= costs[MP]:
@@ -452,7 +470,8 @@ class GameState:
                         self._build_stack.append((UPGRADE, x, y))
                         spawned_units += 1
             else:
-                self.warn("Could not upgrade a unit from {}. Location has no structures or is enemy territory.".format(location))
+                self.warn("Could not upgrade a unit from {}. Location has no structures or is enemy territory.".format(
+                    location))
         return spawned_units
 
     def get_target_edge(self, start_location):
@@ -467,8 +486,8 @@ class GameState:
 
         left = start_location[0] < self.HALF_ARENA
         bottom = start_location[1] < self.HALF_ARENA
-        right = not(left)
-        top = not(bottom)
+        right = not (left)
+        top = not (bottom)
         if left and bottom:
             return self.game_map.TOP_RIGHT
         elif left and top:
@@ -515,7 +534,7 @@ class GameState:
             self.warn('Checked for stationary unit outside of arena bounds')
             return False
         x, y = map(int, location)
-        for unit in self.game_map[x,y]:
+        for unit in self.game_map[x, y]:
             if unit.stationary:
                 return unit
         return False
@@ -524,7 +543,7 @@ class GameState:
         """ Used internally by game_state to print warnings
         """
 
-        if(self.enable_warnings):
+        if (self.enable_warnings):
             debug_write(message)
 
     def suppress_warnings(self, suppress):
@@ -568,7 +587,9 @@ class GameState:
 
         for location in possible_locations:
             for unit in self.game_map[location]:
-                if unit.player_index == attacking_unit.player_index or (attacking_unit.damage_f == 0 and is_stationary(unit.unit_type)) or (attacking_unit.damage_i == 0 and not(is_stationary(unit.unit_type))):
+                if unit.player_index == attacking_unit.player_index or (
+                        attacking_unit.damage_f == 0 and is_stationary(unit.unit_type)) or (
+                        attacking_unit.damage_i == 0 and not (is_stationary(unit.unit_type))):
                     continue
 
                 new_target = False
@@ -582,7 +603,7 @@ class GameState:
                     new_target = True
                 elif not target_stationary and unit_stationary:
                     continue
-                
+
                 if target_distance > unit_distance:
                     new_target = True
                 elif target_distance < unit_distance and not new_target:
@@ -607,7 +628,7 @@ class GameState:
 
                 if target_x_distance < unit_x_distance:
                     new_target = True
-                
+
                 if new_target:
                     target = unit
                     target_stationary = unit_stationary
@@ -642,9 +663,37 @@ class GameState:
         for unit in self.config["unitInformation"]:
             if unit.get('attackRange', 0) >= max_range:
                 max_range = unit.get('attackRange', 0)
-        possible_locations= self.game_map.get_locations_in_range(location, max_range)
+        possible_locations = self.game_map.get_locations_in_range(location, max_range)
         for location_unit in possible_locations:
             for unit in self.game_map[location_unit]:
-                if unit.damage_i + unit.damage_f > 0 and unit.player_index != player_index and self.game_map.distance_between_locations(location, location_unit) <= unit.attackRange:
+                if unit.damage_i + unit.damage_f > 0 and unit.player_index != player_index and self.game_map.distance_between_locations(
+                        location, location_unit) <= unit.attackRange:
                     attackers.append(unit)
         return attackers
+
+    def add_loc(self, unit_type, location):
+        if unit_type == WALL and location not in self.wall_locations:
+            self.wall_locations.append(location)
+        if unit_type == SUPPORT and location not in self.support_locations:
+            self.support_locations.append(location)
+        if unit_type == TURRET and location not in self.turret_locations:
+            self.turret_locations.append(location)
+
+    def remove_loc(self, unit_type, location):
+        if unit_type == WALL and location in self.wall_locations:
+            self.wall_locations.remove(location)
+        if unit_type == SUPPORT and location in self.support_locations:
+            self.support_locations.remove(location)
+        if unit_type == TURRET and location in self.turret_locations:
+            self.turret_locations.remove(location)
+
+    def update_loc(self, unit_type):
+        if unit_type == TURRET:
+            self.turret_locations[:] = (loc for loc in self.turret_locations if
+                                        self.contains_stationary_unit(loc) == TURRET)
+        if unit_type == WALL:
+            self.wall_locations[:] = (loc for loc in self.wall_locations if
+                                      self.contains_stationary_unit(loc) == WALL)
+        if unit_type == SUPPORT:
+            self.support_locations[:] = (loc for loc in self.support_locations if
+                                         self.contains_stationary_unit(loc) == SUPPORT)
