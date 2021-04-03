@@ -47,6 +47,7 @@ class AlgoStrategy(gamelib.AlgoCore):
         self.wall_locations = []
         self.support_locations = []
         self.add_supports = False
+        self.ready_attack = False
 
     def on_turn(self, turn_state):
         """
@@ -79,13 +80,70 @@ class AlgoStrategy(gamelib.AlgoCore):
         For offense we will use long range demolishers if they place stationary units near the enemy's front.
         If there are no stationary units to attack in the front, we will send Scouts to try and score quickly.
         """
-        self.block_middle_with_walls(3, 10, game_state)
+        if self.ready_attack:
+            self.build_attack(game_state)
+            # assume that refund happens after turn
+            self.refund_structures(SUPPORT, game_state, False)
+            self.refund_structures(WALL, game_state, False)
+            self.refund_structures(TURRET, game_state, False)
+            self.ready_attack = False
+            return
+
+        if self.is_ready_to_build_offensive(game_state):
+            self.refund_structures(TURRET, game_state, False)
+            self.ready_attack = True
+            return
+
+        self.block_middle_with_walls(3, 15, game_state)
         self.add_corner_turrets(True, game_state)
         self.add_v_turret_configuration(game_state)
         self.upgrade_top_turrets(4, game_state)
 
         if game_state.turn_number > 3 and game_state.get_resource(SP, 0) > 30:
             interceptors_loc = self.create_interceptor_shooter(8, True, True, game_state)
+
+        self.build_reactive_defense(game_state)
+
+    def build_attack(self, game_state):
+        left_channel = [[5, 10], [6, 9], [7, 8], [8, 7], [9, 6], [10, 5], [11, 4], [12, 3], [13, 2], [13, 1]]
+        left_channel.reverse()
+        game_state.attempt_spawn(SUPPORT, left_channel)
+        game_state.attempt_spawn(WALL, left_channel)  # in case not enough SP
+
+        interceptor_loc = [6, 7]
+        game_state.attempt_spawn(INTERCEPTOR, interceptor_loc)
+
+        scout_loc = [12, 1]
+        game_state.attempt_spawn(SCOUT, scout_loc, 1000)
+
+    def refund_structures(self, unit_type, game_state, include_upgraded=False):
+        remove_locs = []
+        locations = []
+
+        if unit_type == TURRET:
+            locations = self.turret_locations
+        elif unit_type == WALL:
+            locations = self.wall_locations
+        elif unit_type == SUPPORT:
+            locations == self.support_locations
+        else:
+            return
+
+        for loc in locations:
+            for unit in game_state.game_map[loc[0], loc[1]]:
+                if unit.unit_type == unit_type and unit.upgraded == include_upgraded:
+                    remove_locs.append(loc)
+
+        game_state.attempt_remove(remove_locs)
+
+    def is_ready_to_build_offensive(self, game_state):
+        """
+        Checks if MP and SP are high enough.
+        """
+        mp = game_state.project_future_MP(1, 0)
+        sp = self.calculate_possible_SP(game_state)
+
+        return sp > 30 and mp > 7
 
     def add_corner_turrets(self, upgrade, game_state):
         """
