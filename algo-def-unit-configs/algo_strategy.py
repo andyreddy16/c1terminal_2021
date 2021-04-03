@@ -25,6 +25,10 @@ class AlgoStrategy(gamelib.AlgoCore):
         seed = random.randrange(maxsize)
         random.seed(seed)
         gamelib.debug_write('Random seed: {}'.format(seed))
+        # Locations passed by reference to GameState. Should only be updated in GameState
+        self.turret_locations = [[0, 13]]
+        self.wall_locations = [[0, 13]]
+        self.support_locations = [[0, 13]]
 
     def on_game_start(self, config):
         """ 
@@ -42,6 +46,7 @@ class AlgoStrategy(gamelib.AlgoCore):
         MP = 1
         SP = 0
         # This is a good place to do initial setup
+
         self.scored_on_locations = []
         self.add_supports = False
         self.ready_attack = False
@@ -54,13 +59,15 @@ class AlgoStrategy(gamelib.AlgoCore):
         unit deployments, and transmitting your intended deployments to the
         game engine.
         """
-        game_state = gamelib.GameState(self.config, turn_state)
+        game_state = gamelib.GameState(self.config, turn_state, self.turret_locations, self.wall_locations,
+                                       self.support_locations)
         gamelib.debug_write('Performing turn {} of your custom algo strategy'.format(game_state.turn_number))
         game_state.suppress_warnings(True)  # Comment or remove this line to enable warnings.
 
         game_state.update_loc(TURRET)
         game_state.update_loc(WALL)
         game_state.update_loc(SUPPORT)
+
         self.starter_strategy(game_state)
 
         game_state.submit_turn()
@@ -414,7 +421,7 @@ class AlgoStrategy(gamelib.AlgoCore):
         """
         for location in self.scored_on_locations:
             # Build turret one space above so that it doesn't block our own edge spawn locations
-            build_location = [location[0], location[1] + 1]
+            build_location = [location[0], location[1] + 2]
             spawned = game_state.attempt_spawn(TURRET, build_location)
 
     def stall_with_interceptors(self, game_state):

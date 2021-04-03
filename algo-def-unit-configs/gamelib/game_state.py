@@ -49,7 +49,7 @@ class GameState:
 
     """
 
-    def __init__(self, config, serialized_string):
+    def __init__(self, config, serialized_string, turret_locations, wall_locations, support_locations):
         """ Setup a turns variables using arguments passed
 
         Args:
@@ -91,9 +91,9 @@ class GameState:
         MP = self.MP
         SP = self.SP
 
-        self.turret_locations = []
-        self.wall_locations = []
-        self.support_locations = []
+        self.turret_locations = turret_locations
+        self.wall_locations = wall_locations
+        self.support_locations = support_locations
 
         self.game_map = GameMap(self.config)
         self._shortest_path_finder = ShortestPathFinder()
@@ -341,11 +341,11 @@ class GameState:
         affordable = self.number_affordable(unit_type) >= num
         stationary = is_stationary(unit_type)
         blocked = self.contains_stationary_unit(location) or (
-                    stationary and len(self.game_map[location[0], location[1]]) > 0)
+                stationary and len(self.game_map[location[0], location[1]]) > 0)
         correct_territory = location[1] < self.HALF_ARENA
         on_edge = location in (
-                    self.game_map.get_edge_locations(self.game_map.BOTTOM_LEFT) + self.game_map.get_edge_locations(
-                self.game_map.BOTTOM_RIGHT))
+                self.game_map.get_edge_locations(self.game_map.BOTTOM_LEFT) + self.game_map.get_edge_locations(
+            self.game_map.BOTTOM_RIGHT))
 
         if self.enable_warnings:
             fail_reason = ""
@@ -690,10 +690,13 @@ class GameState:
     def update_loc(self, unit_type):
         if unit_type == TURRET:
             self.turret_locations[:] = (loc for loc in self.turret_locations if
-                                        self.contains_stationary_unit(loc) == TURRET)
+                                        ((unit := self.contains_stationary_unit(
+                                            loc)) != False and unit.unit_type == TURRET))
         if unit_type == WALL:
             self.wall_locations[:] = (loc for loc in self.wall_locations if
-                                      self.contains_stationary_unit(loc) == WALL)
+                                      ((unit := self.contains_stationary_unit(
+                                          loc)) != False and unit.unit_type == WALL))
         if unit_type == SUPPORT:
             self.support_locations[:] = (loc for loc in self.support_locations if
-                                         self.contains_stationary_unit(loc) == SUPPORT)
+                                         ((unit := self.contains_stationary_unit(
+                                             loc)) != False and unit.unit_type == SUPPORT))

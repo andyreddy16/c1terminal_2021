@@ -74,6 +74,7 @@ class AlgoStrategy(gamelib.AlgoCore):
         For offense we will use long range demolishers if they place stationary units near the enemy's front.
         If there are no stationary units to attack in the front, we will send Scouts to try and score quickly.
         """
+
         # deploy basic v-shaped defense structure (if turn < 2 or health is low)
         if game_state.turn_number <= 2 or game_state.my_health < 10:
             gamelib.debug_write("Building basic defenses")
