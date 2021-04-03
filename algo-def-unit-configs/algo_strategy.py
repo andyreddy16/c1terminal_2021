@@ -95,13 +95,18 @@ class AlgoStrategy(gamelib.AlgoCore):
 
         if self.is_ready_to_build_offensive(4, 4, 10, game_state):
             self.refund_structures(TURRET, game_state, False)
+            self.refund_structures(WALL, game_state, False)
             self.ready_attack = True
             return
 
-        self.block_middle_with_walls(3, int(game_state.get_resource(SP, 0) * 0.3), game_state)
         self.add_corner_turrets(True, game_state)
         self.add_v_turret_configuration(game_state)
-        self.upgrade_top_turrets(4, game_state)
+
+        self.block_middle_with_walls(3, 14, game_state)
+        other_walls = [[1, 12], [2, 12], [3, 12], [4, 12], [23, 12], [24, 12], [25, 12], [26, 12]]
+        game_state.attempt_spawn(WALL, other_walls)
+
+        # self.upgrade_top_turrets(4, game_state)
 
         if game_state.turn_number > 3 and game_state.get_resource(SP, 0) > 30:
             interceptors_loc = self.create_interceptor_shooter(8, True, True, game_state)
@@ -176,8 +181,8 @@ class AlgoStrategy(gamelib.AlgoCore):
         """
         Adds initial v_turret_config
         """
-        left_turrets = [[5, 12], [6, 11], [8, 9], [10, 7]]
-        right_turrets = [[22, 12], [21, 11], [19, 9], [17, 7]]
+        left_turrets = [[5, 12], [6, 11], [8, 10]]
+        right_turrets = [[22, 12], [21, 11], [19, 10]]
         middle_turrets = [[12, 9], [15, 9]]
         sides_zipped = [item for pair in zip(left_turrets, right_turrets) for item in pair]
         turret_locations = middle_turrets + sides_zipped
