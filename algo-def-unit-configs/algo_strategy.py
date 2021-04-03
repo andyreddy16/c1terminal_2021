@@ -86,14 +86,14 @@ class AlgoStrategy(gamelib.AlgoCore):
         """
         if self.ready_attack:
             self.build_attack(game_state)
-            # assume that refund happens after turn
+            # maybe move somewhere else if we want to attack two times in a row
             self.refund_structures(SUPPORT, game_state, False)
             self.refund_structures(WALL, game_state, False)
             self.refund_structures(TURRET, game_state, False)
             self.ready_attack = False
             return
 
-        if self.is_ready_to_build_offensive(game_state):
+        if self.is_ready_to_build_offensive(4, 4, 10, game_state):
             self.refund_structures(TURRET, game_state, False)
             self.ready_attack = True
             return
@@ -148,14 +148,18 @@ class AlgoStrategy(gamelib.AlgoCore):
 
         game_state.attempt_remove(remove_locs)
 
-    def is_ready_to_build_offensive(self, game_state):
+    def is_ready_to_build_offensive(self, num_supports, num_walls, num_scouts, game_state):
         """
         Checks if MP and SP are high enough.
         """
+        sp_needed = num_supports * game_state.type_cost(SUPPORT)[SP] + num_walls * game_state.type_cost(WALL)[SP]
+        mp_needed = num_scouts * game_state.type_cost(SCOUT)[MP]
         mp = game_state.project_future_MP(1, 0)
+        gamelib.debug_write("MP " + str(mp))
         sp = self.calculate_possible_SP(game_state)
+        gamelib.debug_write("SP " + str(sp))
 
-        return sp > 30 and mp > 7
+        return sp >= sp_needed and mp >= mp_needed
 
     def add_corner_turrets(self, upgrade, game_state):
         """
@@ -351,7 +355,7 @@ class AlgoStrategy(gamelib.AlgoCore):
         for turret_loc in game_state.turret_locations:
             for unit in game_state.game_map[turret_loc[0], turret_loc[1]]:
                 if unit.unit_type == TURRET and not unit.upgraded:
-                    sp += unit.cost[0]
+                    sp += unit.cost[SP] * 0.97
         return sp
 
     def prepare_offensive_hit(self, game_state):
