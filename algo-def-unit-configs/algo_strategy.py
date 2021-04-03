@@ -87,8 +87,6 @@ class AlgoStrategy(gamelib.AlgoCore):
         if game_state.turn_number > 3 and game_state.get_resource(SP, 0) > 30:
             interceptors_loc = self.create_interceptor_shooter(8, True, True, game_state)
 
-        self.
-
     def add_corner_turrets(self, upgrade, game_state):
         """
         Add corner turrets, and upgrades if wanted.
