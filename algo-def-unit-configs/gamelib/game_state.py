@@ -689,14 +689,29 @@ class GameState:
 
     def update_loc(self, unit_type):
         if unit_type == TURRET:
-            self.turret_locations[:] = (loc for loc in self.turret_locations if
-                                        ((unit := self.contains_stationary_unit(
-                                            loc)) != False and unit.unit_type == TURRET))
+            new_locations = []
+            for location in self.turret_locations:
+                unit = self.contains_stationary_unit(location)
+                if not unit:
+                    continue
+                if unit.unit_type == TURRET:
+                    new_locations.append(location)
+            self.turret_locations[:] = new_locations
         if unit_type == WALL:
-            self.wall_locations[:] = (loc for loc in self.wall_locations if
-                                      ((unit := self.contains_stationary_unit(
-                                          loc)) != False and unit.unit_type == WALL))
+            new_locations = []
+            for location in self.wall_locations:
+                unit = self.contains_stationary_unit(location)
+                if not unit:
+                    continue
+                if unit.unit_type == WALL:
+                    new_locations.append(location)
+            self.wall_locations[:] = new_locations
         if unit_type == SUPPORT:
-            self.support_locations[:] = (loc for loc in self.support_locations if
-                                         ((unit := self.contains_stationary_unit(
-                                             loc)) != False and unit.unit_type == SUPPORT))
+            new_locations = []
+            for location in self.support_locations:
+                unit = self.contains_stationary_unit(location)
+                if not unit:
+                    continue
+                if unit.unit_type == SUPPORT:
+                    new_locations.append(location)
+            self.support_locations[:] = new_locations
