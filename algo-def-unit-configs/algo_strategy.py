@@ -201,9 +201,13 @@ class AlgoStrategy(gamelib.AlgoCore):
             offset_from_edge = 0
             self.defend_lower_map(offset_from_edge, game_state)
 
+        gamelib.debug_write("Finished setting defend_lower_map")
+
         if self.ready_attack:
             self.refund_structures(TURRET, game_state, False)
             self.refund_structures(WALL, game_state, False)
+
+        gamelib.debug_write("Finished refunding")
 
         # clear placeholders for next turn stats
         self.num_scored_on = 0
@@ -214,11 +218,17 @@ class AlgoStrategy(gamelib.AlgoCore):
         self.last_turn_enemy_MP = game_state.get_resource(MP, 1)
         self.potential_hole = []
 
+        gamelib.debug_write("Finished clearing")
+
         # doesn't really worked if path is blocked
         # if avg_breached + 5 > game_state.my_health or avg_damage > 7:
         if game_state.project_future_MP(player_index=1) > 12 or game_state.my_health < game_state.project_future_MP(player_index=1):
+            gamelib.debug_write("Sending interceptors.")
             self.send_interceptors_most_attacked(4, game_state)
+            gamelib.debug_write("Finished interceptors.")
             self.ready_attack = False
+
+        gamelib.debug_write("Finished!")
 
     def build_attack(self, game_state, left=True, max_turrets=1000):
         left_channel = [[5, 10], [6, 9], [7, 8], [8, 7], [9, 6], [10, 5], [11, 4], [12, 3], [13, 2], [13, 1]]
@@ -261,6 +271,9 @@ class AlgoStrategy(gamelib.AlgoCore):
         """
         Returns true if path reaches other side.
         """
+        if not game_state.game_map.in_arena_bounds(start_location) or start_location[0] > 13:
+            return False
+
         path = game_state.find_path_to_edge(start_location)
         if not path:
             return False
@@ -307,7 +320,7 @@ class AlgoStrategy(gamelib.AlgoCore):
         all_locations = middle_top + [item for pair in zip(left_edge, right_edge) for item in pair] + bottom_middle \
                         + [item for pair in zip(bottom_left, bottom_right) for item in pair]
 
-        gamelib.debug_write(all_locations)
+        gamelib.debug_write("Defend lower map {0}", all_locations);
 
         # apply x offsets
         for location in all_locations:
@@ -420,6 +433,7 @@ class AlgoStrategy(gamelib.AlgoCore):
                         lower_left = [sorted_hit[0] + 1, sorted_hit[1] - 1]
                         if self.check_if_holes(lower_left, False, game_state):
                             spawned = game_state.attempt_spawn(INTERCEPTOR, lower_left)
+                            gamelib.debug_write(spawned)
                         if spawned == 0:
                             upper_left = [sorted_hit[0] - 1, sorted_hit[1] + 1]
                             if self.check_if_holes(upper_left, False, game_state):
@@ -428,6 +442,7 @@ class AlgoStrategy(gamelib.AlgoCore):
                         lower_right = [sorted_hit[0] - 1, sorted_hit[1] - 1]
                         if self.check_if_holes(lower_right, False, game_state):
                             spawned = game_state.attempt_spawn(INTERCEPTOR, lower_right)
+                            gamelib.debug_write(spawned)
                         if spawned == 0:
                             upper_right = [sorted_hit[0] + 1, sorted_hit[1] + 1]
                             if self.check_if_holes(upper_right, False, game_state):
@@ -872,6 +887,9 @@ class AlgoStrategy(gamelib.AlgoCore):
         Processing the action frames is complicated so we only suggest it if you have time and experience.
         Full doc on format of a game frame at in json-docs.html in the root of the Starterkit.
         """
+
+        gamelib.debug_write("Starting on_action_frame analysis")
+
         # Let's record at what position we get scored on
         state = json.loads(turn_string)
         events = state["events"]
@@ -912,6 +930,8 @@ class AlgoStrategy(gamelib.AlgoCore):
                 self.num_scored_on += 1
                 self.scored_on_locations.append(location)
                 gamelib.debug_write("All locations: {}".format(self.scored_on_locations))
+
+        gamelib.debug_write("Finished on_action_frame analysis")
 
 
 if __name__ == "__main__":
