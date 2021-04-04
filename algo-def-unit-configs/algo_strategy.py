@@ -173,7 +173,11 @@ class AlgoStrategy(gamelib.AlgoCore):
             game_state.attempt_spawn(WALL, other_walls)
 
         # always block middle
-        self.block_middle_with_walls(3, 14, game_state)
+        if attack_in_progress:
+            start_left = not self.get_side_enemy_defense(game_state)
+            self.block_middle_with_walls(3, 14, start_left, game_state)
+        else:
+            self.block_middle_with_walls(3, 14, True, game_state)
 
         # self.upgrade_top_turrets(4, game_state)
 
@@ -248,7 +252,7 @@ class AlgoStrategy(gamelib.AlgoCore):
 
     def need_to_send_demolisher(self, game_state):
         demolisher_location = [3, 10]
-        any_holes = self.check_if_holes(demolisher_location, game_state)
+        any_holes = self.check_if_holes(demolisher_location, True, game_state)
         enemy_walls = len(game_state.game_map.get_enemy_unit_locations(WALL))
         enemy_turrets = len(game_state.game_map.get_enemy_unit_locations(TURRET))
         return (not any_holes or enemy_turrets + enemy_walls > 25) and game_state.project_future_MP(0) > 9
@@ -506,7 +510,7 @@ class AlgoStrategy(gamelib.AlgoCore):
                 break
             upgraded += game_state.attempt_upgrade(loc)
 
-    def block_middle_with_walls(self, depth, length, start_left=True, game_state):
+    def block_middle_with_walls(self, depth, length, start_left, game_state):
         """
         Blocks the middle with a line of walls.
         :param depth: distance from center of game map.
