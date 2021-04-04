@@ -138,7 +138,7 @@ class AlgoStrategy(gamelib.AlgoCore):
                 self.refund_structures(TURRET, game_state, False)
                 self.attacked_in_last_round_and_removed_all = True
                 self.ready_attack = False
-        elif self.is_ready_to_build_offensive(4, 6, game_state) and len(game_state.turret_locations) > 2 and not self.attacked_in_last_round_and_removed_all:
+        elif (self.is_ready_to_build_offensive(4, 6, game_state) or game_state.get_resource(MP, 0) > 20) and not self.attacked_in_last_round_and_removed_all:
             if not self.need_to_send_demolisher(game_state):
                 self.refund_structures(TURRET, game_state, False)
                 self.refund_structures(WALL, game_state, False)
@@ -769,7 +769,7 @@ class AlgoStrategy(gamelib.AlgoCore):
 
         locations_do_not_build = [3, 10]
         if attack_soon:
-            locations_do_not_build = [[4, 11], [5, 11], [4, 12], [24, 12], [24, 11], [22,11]]
+            locations_do_not_build = [[4, 11], [5, 11], [4, 12], [24, 12], [24, 11], [22, 11]]
 
         sorted_hits = self.get_sorted_hits(self.scored_on_locations, game_state)
         sorted_damages = self.get_sorted_hits(self.damaged_locations, game_state)
