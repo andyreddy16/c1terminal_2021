@@ -130,6 +130,9 @@ class AlgoStrategy(gamelib.AlgoCore):
         # if game_state.turn_number > 3 and game_state.get_resource(SP, 0) > 30:
         # interceptors_loc = self.create_interceptor_shooter(8, True, True, game_state)
 
+        # should fortify most attacked locations, but make sure not to block offense since it will be upgraded units
+        # since we are avoiding the edges, for the very front, if y + 2 doesn't work, try x +/- 2
+        # could also aim interceptors at those spots (need to make sure speed and pathing works out)
         self.build_reactive_defense(game_state)
 
     def build_attack(self, game_state, left=True):
@@ -479,10 +482,32 @@ class AlgoStrategy(gamelib.AlgoCore):
         We can track where the opponent scored by looking at events in action frames 
         as shown in the on_action_frame function
         """
-        for location in self.scored_on_locations:
+        # should fortify most attacked locations, but make sure not to block offense since it will be upgraded units
+        # since we are avoiding the edges, for the very front, if y + 2 doesn't work, try x +/- 2
+        # could also aim interceptors at those spots (need to make sure speed and pathing works out)
+
+        counts = dict()
+        for i in self.scored_on_locations:
+            loc = tuple(i)
+            counts[loc] = counts.get(loc, 0) + 1
+
+        # sorted by largest frequency
+        sorted_hits = sorted(counts.keys(), key=lambda item: counts[item], reverse=True)
+
+        for location in sorted_hits:
             # Build turret one space above so that it doesn't block our own edge spawn locations
-            build_location = [location[0], location[1] + 2]
-            spawned = game_state.attempt_spawn(TURRET, build_location)
+            x, y = location  # converted into tuple for dictionary hashing
+            build_location = [x, y + 2]
+            if not game_state.can_spawn(WALL, build_location):
+                x_shift = 2
+                if x >= 14:
+                    x_shift = -2
+                build_location = [x + x_shift, y + 1]
+                if not game_state.can_spawn(WALL, build_location):
+                    build_location = [x + x_shift, y]
+
+            game_state.attempt_spawn(TURRET, build_location)
+            game_state.attempt_spawn(WALL, build_location) # at least a wall if the other doesn't work
 
     def stall_with_interceptors(self, game_state):
         """
