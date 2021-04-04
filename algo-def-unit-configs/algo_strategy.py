@@ -135,6 +135,14 @@ class AlgoStrategy(gamelib.AlgoCore):
         # could also aim interceptors at those spots (need to make sure speed and pathing works out)
         self.build_reactive_defense(game_state)
 
+        offset_from_edge = 0
+        if attack_in_progress or self.ready_attack:
+            gamelib.debug_write("SP left for defense")
+            gamelib.debug_write(game_state.get_resource(SP, 0))
+            offset_from_edge = 3  # to not block offensive
+
+        self.defend_lower_map(offset_from_edge, game_state)
+
     def build_attack(self, game_state, left=True):
         left_channel = [[5, 10], [6, 9], [7, 8], [8, 7], [9, 6], [10, 5], [11, 4], [12, 3], [13, 2], [13, 1]]
         left_interceptor = [5, 8]
@@ -159,6 +167,37 @@ class AlgoStrategy(gamelib.AlgoCore):
 
         game_state.attempt_spawn(INTERCEPTOR, interceptor)  # not sure if needed all the time
         game_state.attempt_spawn(SCOUT, scout, 1000)
+
+    def defend_lower_map(self, offset_from_edge: int, game_state, include_y_offset=True):
+        """
+        Uses remaining structure points to defend lower part of map.
+        include_y_offset also offsets in y direction from the middle of board. Does not offset middle turrets.
+        """
+        left_edge = [[0, 13], [1, 12], [2, 11], [3, 10], [4, 9], [5, 8], [6, 7], [7, 6], [8, 5]]
+        right_edge = [[27, 13], [26, 12], [25, 11], [24, 10], [23, 9], [22, 8], [21, 7], [20, 6], [19, 5]]
+        bottom_left = [[7, 8], [9, 8], [11, 8], [10, 6]]
+        bottom_right = [[16, 8], [18, 8], [20, 8], [17, 6]]
+        bottom_middle = [[13, 5], [14, 5]]
+
+        if include_y_offset:
+            left_edge[:] = (loc for loc in left_edge if loc[1] <= 13 - offset_from_edge)
+            right_edge[:] = (loc for loc in right_edge if loc[1] <= 13 - offset_from_edge)
+
+        all_locations = [item for pair in zip(left_edge, right_edge) for item in pair] + bottom_middle \
+                        + [item for pair in zip(bottom_left, bottom_right) for item in pair]
+
+        gamelib.debug_write(all_locations)
+
+        # apply x offsets
+        for location in all_locations:
+            if location[0] <= 13:
+                location[0] += offset_from_edge
+            else:
+                location[0] -= offset_from_edge
+
+        # build turrets, and then change to walls if no more sp
+        game_state.attempt_spawn(TURRET, all_locations)
+        game_state.attempt_spawn(WALL, all_locations)
 
     def get_side_enemy_defense(self, game_state) -> bool:
         turret_locations = game_state.game_map.get_enemy_unit_locations(TURRET)
@@ -213,7 +252,7 @@ class AlgoStrategy(gamelib.AlgoCore):
         # then we will send out attack; otherwise we wait for want to save up our MP
         # removed 3 in turn_number since this is preparing for offense, so next turn will be ready for offense
         return mp > mp_needed and sp > sp_needed and (
-                    game_state.turn_number % 10 not in [0, 1, 2] or game_state.my_health < 10)
+                game_state.turn_number % 10 not in [0, 1, 2] or game_state.my_health < 10)
 
     def add_corner_turrets(self, upgrade, game_state):
         """
@@ -507,7 +546,7 @@ class AlgoStrategy(gamelib.AlgoCore):
                     build_location = [x + x_shift, y]
 
             game_state.attempt_spawn(TURRET, build_location)
-            game_state.attempt_spawn(WALL, build_location) # at least a wall if the other doesn't work
+            game_state.attempt_spawn(WALL, build_location)  # at least a wall if the other doesn't work
 
     def stall_with_interceptors(self, game_state):
         """
