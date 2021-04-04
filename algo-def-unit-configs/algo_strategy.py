@@ -152,11 +152,13 @@ class AlgoStrategy(gamelib.AlgoCore):
             if self.check_if_holes(demolisher_location, False, game_state):
                 game_state.attempt_remove(demolisher_location)
                 game_state.attempt_spawn(DEMOLISHER, demolisher_location, 2)
+                game_state.attempt_spawn(SUPPORT, [5, 11])
             else:
                 removed = game_state.attempt_remove(self.potential_hole)
                 if removed == 0:
                     game_state.attempt_remove(demolisher_location)
                     game_state.attempt_spawn(DEMOLISHER, demolisher_location, 2)
+                    game_state.attempt_spawn(SUPPORT, [5, 11])
 
         self.add_corner_turrets(True, game_state)
         gamelib.debug_write(attack_in_progress)
@@ -265,7 +267,7 @@ class AlgoStrategy(gamelib.AlgoCore):
         any_holes = self.check_if_holes(demolisher_location, True, game_state)
         enemy_walls = len(game_state.game_map.get_enemy_unit_locations(WALL))
         enemy_turrets = len(game_state.game_map.get_enemy_unit_locations(TURRET))
-        return (not any_holes or enemy_turrets + enemy_walls > 25) and game_state.project_future_MP(0) > 9
+        return (not any_holes or enemy_turrets + enemy_walls * 0.7 > 40) and game_state.project_future_MP(0) > 9
 
     def check_if_holes(self, start_location, remove_hole_test, game_state):
         """
