@@ -149,7 +149,7 @@ class AlgoStrategy(gamelib.AlgoCore):
         if self.need_to_send_demolisher(game_state):
             demolisher_location = [3, 10]
             self.potential_hole = [4, 12]  # to let demolisher pass our defense
-            if self.check_if_holes(demolisher_location, game_state):
+            if self.check_if_holes(demolisher_location, False, game_state):
                 game_state.attempt_remove(demolisher_location)
                 game_state.attempt_spawn(DEMOLISHER, demolisher_location, 2)
             else:
@@ -167,7 +167,7 @@ class AlgoStrategy(gamelib.AlgoCore):
 
         # only block if not attacking
         if not attack_in_progress:
-            other_walls = [[1, 12], [2, 12], [3, 12], [4, 12], [23, 12], [24, 12], [25, 12], [26, 12]]
+            other_walls = [[3, 12], [4, 12], [23, 12], [24, 12], [2, 12], [25, 12], [1, 12], [26, 12]]
             if len(self.potential_hole) != 0:
                 other_walls.remove(self.potential_hole)
             game_state.attempt_spawn(WALL, other_walls)
@@ -253,7 +253,7 @@ class AlgoStrategy(gamelib.AlgoCore):
         enemy_turrets = len(game_state.game_map.get_enemy_unit_locations(TURRET))
         return (not any_holes or enemy_turrets + enemy_walls > 25) and game_state.project_future_MP(0) > 9
 
-    def check_if_holes(self, start_location, game_state):
+    def check_if_holes(self, start_location, remove_hole_test, game_state):
         """
         Returns true if path reaches other side.
         """
@@ -264,7 +264,7 @@ class AlgoStrategy(gamelib.AlgoCore):
         found_edge = False
         our_hole = [4, 12]
         need_to_re_add_hole = False
-        if game_state.contains_stationary_unit(our_hole):
+        if game_state.contains_stationary_unit(our_hole) and remove_hole_test:
             game_state.game_map.remove_unit(our_hole)
             need_to_re_add_hole = True
 
@@ -506,7 +506,7 @@ class AlgoStrategy(gamelib.AlgoCore):
                 break
             upgraded += game_state.attempt_upgrade(loc)
 
-    def block_middle_with_walls(self, depth, length, game_state):
+    def block_middle_with_walls(self, depth, length, start_left=True, game_state):
         """
         Blocks the middle with a line of walls.
         :param depth: distance from center of game map.
@@ -532,6 +532,9 @@ class AlgoStrategy(gamelib.AlgoCore):
 
         for x in range(far_left_x, far_right_x + 1):
             wall_locations.append([x, 13 - depth])
+
+        if not start_left:
+            wall_locations.reverse()
 
         game_state.attempt_spawn(WALL, wall_locations)
 
