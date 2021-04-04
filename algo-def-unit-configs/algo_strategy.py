@@ -135,13 +135,17 @@ class AlgoStrategy(gamelib.AlgoCore):
         # could also aim interceptors at those spots (need to make sure speed and pathing works out)
         self.build_reactive_defense(game_state)
 
-        offset_from_edge = 0
         if attack_in_progress or self.ready_attack:
             gamelib.debug_write("SP left for defense")
             gamelib.debug_write(game_state.get_resource(SP, 0))
             offset_from_edge = 3  # to not block offensive
 
-        self.defend_lower_map(offset_from_edge, game_state)
+            no_right_offset = self.get_side_enemy_defense(game_state)  # if returns true, then left side is where attack is sent out, so right side should not be offset
+            no_left_offset = not no_right_offset
+            self.defend_lower_map(offset_from_edge, game_state, no_left_offset=no_left_offset, no_right_offset=no_right_offset)
+        else:
+            offset_from_edge = 0
+            self.defend_lower_map(offset_from_edge, game_state)
 
     def build_attack(self, game_state, left=True):
         left_channel = [[5, 10], [6, 9], [7, 8], [8, 7], [9, 6], [10, 5], [11, 4], [12, 3], [13, 2], [13, 1]]
@@ -168,7 +172,7 @@ class AlgoStrategy(gamelib.AlgoCore):
         game_state.attempt_spawn(INTERCEPTOR, interceptor)  # not sure if needed all the time
         game_state.attempt_spawn(SCOUT, scout, 1000)
 
-    def defend_lower_map(self, offset_from_edge: int, game_state, include_y_offset=True):
+    def defend_lower_map(self, offset_from_edge: int, game_state, include_y_offset=True, no_left_offset=False, no_right_offset=False):
         """
         Uses remaining structure points to defend lower part of map.
         include_y_offset also offsets in y direction from the middle of board. Does not offset middle turrets.
@@ -190,9 +194,9 @@ class AlgoStrategy(gamelib.AlgoCore):
 
         # apply x offsets
         for location in all_locations:
-            if location[0] <= 13:
+            if location[0] <= 13 and not no_left_offset:
                 location[0] += offset_from_edge
-            else:
+            elif not no_right_offset:
                 location[0] -= offset_from_edge
 
         # build turrets, and then change to walls if no more sp
