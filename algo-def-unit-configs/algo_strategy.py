@@ -772,13 +772,13 @@ class AlgoStrategy(gamelib.AlgoCore):
             locations_do_not_build = [[4, 11], [5, 11], [4, 12], [24, 12], [24, 11], [22,11]]
 
         sorted_hits = self.get_sorted_hits(self.scored_on_locations, game_state)
-        sorted_hits += self.get_sorted_hits(self.damaged_locations, game_state)
+        sorted_damages = self.get_sorted_hits(self.damaged_locations, game_state)
 
-        if [1, 13] in sorted_hits:
+        if [1, 13] in sorted_damages:
             game_state.attempt_spawn(TURRET, [1, 13])
             game_state.attempt_spawn(WALL, [1, 13])
 
-        if [26, 13] in sorted_hits:
+        if [26, 13] in sorted_damages:
             game_state.attempt_spawn(TURRET, [26, 13])
             game_state.attempt_spawn(WALL, [26, 13])
 
