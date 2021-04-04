@@ -84,30 +84,46 @@ class AlgoStrategy(gamelib.AlgoCore):
         For offense we will use long range demolishers if they place stationary units near the enemy's front.
         If there are no stationary units to attack in the front, we will send Scouts to try and score quickly.
         """
-        if self.ready_attack:
+        attack_in_progress = False
+        if self.ready_attack and game_state.get_resource(MP, 0) > 9:
             # left is in our view
             enemy_has_most_defense_on_left = self.get_side_enemy_defense(game_state)
             # want to build attack on same side as their defense since it will go opposite side
             self.build_attack(game_state, left=enemy_has_most_defense_on_left)
-            # maybe move somewhere else if we want to attack two times in a row
-            self.refund_structures(SUPPORT, game_state, False)
-            self.refund_structures(WALL, game_state, False)
-            self.refund_structures(TURRET, game_state, False)
-            self.ready_attack = False
-            return
+            attack_in_progress = True
+            # remove offensive structure if not enough MP for next turn.
+            # Do not remove if enemy health is lower than our MP units for next round.
+            # Does MP update after putting scouts?
+            new_mp = game_state.project_future_MP()
+            if new_mp <= 9 and game_state.enemy_health > new_mp:
+                self.refund_structures(SUPPORT, game_state, False)
+                self.refund_structures(WALL, game_state, False)
+                self.refund_structures(TURRET, game_state, False)
+                self.ready_attack = False
+        else:
+            walls = 6
+            supports = 10 - walls  # 10 represents number of support units needed to build attack
 
-        if self.is_ready_to_build_offensive(4, 4, 10, game_state):
-            self.refund_structures(TURRET, game_state, False)
-            self.refund_structures(WALL, game_state, False)
-            self.ready_attack = True
-            return
+            if self.is_ready_to_build_offensive(supports, walls, game_state):
+                self.refund_structures(TURRET, game_state, False)
+                self.refund_structures(WALL, game_state, False)
+                self.ready_attack = True
+                return
 
         self.add_corner_turrets(True, game_state)
-        self.add_v_turret_configuration(game_state)
+        gamelib.debug_write(attack_in_progress)
+        if not attack_in_progress:
+            self.add_v_turret_configuration(game_state)
+        else:
+            self.add_v_turret_configuration(game_state, 2)
 
+        # only block if not attacking
+        if not attack_in_progress:
+            other_walls = [[1, 12], [2, 12], [3, 12], [4, 12], [23, 12], [24, 12], [25, 12], [26, 12]]
+            game_state.attempt_spawn(WALL, other_walls)
+
+        # always block middle
         self.block_middle_with_walls(3, 14, game_state)
-        other_walls = [[1, 12], [2, 12], [3, 12], [4, 12], [23, 12], [24, 12], [25, 12], [26, 12]]
-        game_state.attempt_spawn(WALL, other_walls)
 
         # self.upgrade_top_turrets(4, game_state)
 
@@ -179,7 +195,7 @@ class AlgoStrategy(gamelib.AlgoCore):
 
         game_state.attempt_remove(remove_locs)
 
-    def is_ready_to_build_offensive(self, num_supports, num_walls, num_scouts, game_state):
+    def is_ready_to_build_offensive(self, num_supports: int, num_walls: int, game_state, num_scouts=8) -> bool:
         """
         Checks if MP and SP are high enough.
         """
@@ -190,7 +206,11 @@ class AlgoStrategy(gamelib.AlgoCore):
         sp = self.calculate_possible_SP(game_state)
         gamelib.debug_write("SP " + str(sp))
 
-        return sp >= sp_needed and mp >= mp_needed
+        # if we have more than 9 MP (or mp_needed) and the turn number is close to next group of 10
+        # then we will send out attack; otherwise we wait for want to save up our MP
+        # removed 3 in turn_number since this is preparing for offense, so next turn will be ready for offense
+        return mp > mp_needed and sp > sp_needed and (
+                    game_state.turn_number % 10 not in [0, 1, 2] or game_state.my_health < 10)
 
     def add_corner_turrets(self, upgrade, game_state):
         """
@@ -203,12 +223,18 @@ class AlgoStrategy(gamelib.AlgoCore):
         if upgrade:
             game_state.attempt_upgrade(turret_locations)
 
-    def add_v_turret_configuration(self, game_state):
+    def add_v_turret_configuration(self, game_state, reduce_sides=0):
         """
-        Adds initial v_turret_config
+        Adds initial v_turret_config. Reduce_sides removes from both left and right (for attack so not in the way)
         """
         left_turrets = [[5, 12], [6, 11], [8, 10]]
         right_turrets = [[22, 12], [21, 11], [19, 10]]
+        if reduce_sides > len(left_turrets):
+            reduce_sides = len(left_turrets)
+        if reduce_sides > 0:
+            del left_turrets[-reduce_sides:]
+            del right_turrets[-reduce_sides:]
+
         middle_turrets = [[12, 9], [15, 9]]
         sides_zipped = [item for pair in zip(left_turrets, right_turrets) for item in pair]
         turret_locations = middle_turrets + sides_zipped
