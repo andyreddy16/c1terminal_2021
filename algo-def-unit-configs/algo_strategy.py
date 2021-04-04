@@ -51,6 +51,19 @@ class AlgoStrategy(gamelib.AlgoCore):
         self.add_supports = False
         self.ready_attack = False
 
+        # needs to be cleared or updated each turn
+        self.mobile_units_enemy_last_turn = {
+            SCOUT: 0,
+            DEMOLISHER: 0,
+            INTERCEPTOR: 0
+        }
+        self.last_turn_enemy_MP = 0
+        self.num_scored_on = 0
+
+        # keep for entire game
+        self.MP_per_scored_on = []
+        self.MP_per_enemy_scouts_deployed = []
+
     def on_turn(self, turn_state):
         """
         This function is called every turn with the game state wrapper as
@@ -84,6 +97,28 @@ class AlgoStrategy(gamelib.AlgoCore):
         For offense we will use long range demolishers if they place stationary units near the enemy's front.
         If there are no stationary units to attack in the front, we will send Scouts to try and score quickly.
         """
+
+        # store statistics for when we get scored on and enemy's MP during that turn
+        if self.num_scored_on > 0:
+            self.MP_per_scored_on.append((self.num_scored_on, self.last_turn_enemy_MP))
+
+        if self.mobile_units_enemy_last_turn[SCOUT] > 0:
+            self.MP_per_enemy_scouts_deployed.append((self.mobile_units_enemy_last_turn[SCOUT], self.last_turn_enemy_MP))
+
+        # clear placeholders for next turn stats
+        self.num_scored_on = 0
+        self.mobile_units_enemy_last_turn[SCOUT] = 0
+        self.mobile_units_enemy_last_turn[DEMOLISHER] = 0
+        self.mobile_units_enemy_last_turn[INTERCEPTOR] = 0
+        self.last_turn_enemy_MP = game_state.get_resource(MP, 1)
+
+        attack_magnitude = 10
+        probability_of_enemy_attack = self.predict_enemy_attack(attack_magnitude, game_state)
+
+        # send interceptors towards most attacked locations, not really working yet, should also check if section is destroyed a lot
+        if probability_of_enemy_attack > 0.9:
+            self.send_interceptors_most_attacked(2, game_state)
+
         attack_in_progress = False
         if self.ready_attack and game_state.get_resource(MP, 0) > 9:
             # left is in our view
@@ -216,6 +251,60 @@ class AlgoStrategy(gamelib.AlgoCore):
             else:
                 right_count += 1
         return left_count > right_count
+
+    def predict_enemy_attack(self, attack_magnitude, game_state):
+        """
+        Gets probability of enemy attack at a certain magnitude * effectiveness
+        :param game_state: game state
+        :param attack_magnitude: number of scouts deployed
+        """
+        if len(self.MP_per_enemy_scouts_deployed) == 0:
+            return 0
+
+        num_attacks = 0
+        enemy_current_mp = game_state.get_resource(MP, 1)
+        for mp_per_scouts in self.MP_per_enemy_scouts_deployed:
+            scouts_deployed, mp = mp_per_scouts
+            if scouts_deployed >= attack_magnitude and abs(mp - enemy_current_mp) <= 1:
+                num_attacks += 1
+
+        if num_attacks == 0:
+            return 0
+
+        # effectiveness of attack
+        successful_attacks_at_enemy_mp = 0
+        for mp_per_scored_on in self.MP_per_scored_on:
+            num_scored, mp = mp_per_scored_on
+            if abs(mp - enemy_current_mp) <= 1:
+                successful_attacks_at_enemy_mp += 1
+
+        gamelib.debug_write("Number of attacks {0} at attack magnitude {1}", num_attacks, attack_magnitude)
+        effectiveness = successful_attacks_at_enemy_mp / num_attacks
+        gamelib.debug_write("Effectiveness {0}", effectiveness)
+
+        return num_attacks / len(self.MP_per_enemy_scouts_deployed) * effectiveness
+
+    def send_interceptors_most_attacked(self, num, game_state):
+        sorted_hits = self.get_sorted_hits(game_state)
+        for i in range(num):
+            if i < len(sorted_hits):
+                sorted_hit = sorted_hits[i]
+                spawned = game_state.attempt_spawn(INTERCEPTOR, sorted_hit)
+                if spawned == 0:
+                    # attempt to spawn close to location on board
+                    is_left = sorted_hit[0] <= 13
+                    if is_left:
+                        lower_left = [sorted_hit[0] + 1, sorted_hit[1] - 1]
+                        spawned_lower = game_state.attempt_spawn(INTERCEPTOR, lower_left)
+                        if spawned_lower == 0:
+                            upper_left = [sorted_hit[0] - 1, sorted_hit[1] + 1]
+                            game_state.attempt_spawn(INTERCEPTOR, upper_left)
+                    else:
+                        lower_right = [sorted_hit[0] - 1, sorted_hit[1] - 1]
+                        spawned_lower = game_state.attempt_spawn(INTERCEPTOR, lower_right)
+                        if spawned_lower == 0:
+                            upper_right = [sorted_hit[0] + 1, sorted_hit[1] + 1]
+                            game_state.attempt_spawn(INTERCEPTOR, upper_right)
 
     def refund_structures(self, unit_type, game_state, include_upgraded=False):
         remove_locs = []
@@ -529,13 +618,7 @@ class AlgoStrategy(gamelib.AlgoCore):
         # since we are avoiding the edges, for the very front, if y + 2 doesn't work, try x +/- 2
         # could also aim interceptors at those spots (need to make sure speed and pathing works out)
 
-        counts = dict()
-        for i in self.scored_on_locations:
-            loc = tuple(i)
-            counts[loc] = counts.get(loc, 0) + 1
-
-        # sorted by largest frequency
-        sorted_hits = sorted(counts.keys(), key=lambda item: counts[item], reverse=True)
+        sorted_hits = self.get_sorted_hits(game_state)
 
         for location in sorted_hits:
             # Build turret one space above so that it doesn't block our own edge spawn locations
@@ -551,6 +634,18 @@ class AlgoStrategy(gamelib.AlgoCore):
 
             game_state.attempt_spawn(TURRET, build_location)
             game_state.attempt_spawn(WALL, build_location)  # at least a wall if the other doesn't work
+
+    def get_sorted_hits(self, game_state):
+        """
+        Returns a list of locations by most hit to least hit
+        """
+        counts = dict()
+        for i in self.scored_on_locations:
+            loc = tuple(i)
+            counts[loc] = counts.get(loc, 0) + 1
+
+        # sorted by largest frequency
+        return sorted(counts.keys(), key=lambda item: counts[item], reverse=True)
 
     def stall_with_interceptors(self, game_state):
         """
@@ -646,6 +741,19 @@ class AlgoStrategy(gamelib.AlgoCore):
         state = json.loads(turn_string)
         events = state["events"]
         breaches = events["breach"]
+
+        turn_info = state["turnInfo"]
+        phase = turn_info[0]
+        turn_number = turn_info[1]
+        action_phase = 1
+
+        if phase == action_phase and turn_number == 0:
+            # record enemy mobile units deployed
+            p2_units = state["p2Units"]
+            self.mobile_units_enemy_last_turn[SCOUT] = len(p2_units[3])
+            self.mobile_units_enemy_last_turn[DEMOLISHER] = len(p2_units[4])
+            self.mobile_units_enemy_last_turn[INTERCEPTOR] = len(p2_units[5])
+
         for breach in breaches:
             location = breach[0]
             unit_owner_self = True if breach[4] == 1 else False
@@ -653,6 +761,7 @@ class AlgoStrategy(gamelib.AlgoCore):
             # 1 is integer for yourself, 2 is opponent (StarterKit code uses 0, 1 as player_index instead)
             if not unit_owner_self:
                 gamelib.debug_write("Got scored on at: {}".format(location))
+                self.num_scored_on += 1
                 self.scored_on_locations.append(location)
                 gamelib.debug_write("All locations: {}".format(self.scored_on_locations))
 
