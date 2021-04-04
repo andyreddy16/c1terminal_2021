@@ -411,26 +411,26 @@ class AlgoStrategy(gamelib.AlgoCore):
         for i in range(num):
             if i < len(sorted_hits):
                 sorted_hit = sorted_hits[i]
-                if self.check_if_holes(sorted_hit, game_state):
+                if self.check_if_holes(sorted_hit, False, game_state):
                     spawned = game_state.attempt_spawn(INTERCEPTOR, sorted_hit)
                 if spawned == 0:
                     # attempt to spawn close to location on board
                     is_left = sorted_hit[0] <= 13
                     if is_left:
                         lower_left = [sorted_hit[0] + 1, sorted_hit[1] - 1]
-                        if self.check_if_holes(lower_left, game_state):
+                        if self.check_if_holes(lower_left, False, game_state):
                             spawned = game_state.attempt_spawn(INTERCEPTOR, lower_left)
                         if spawned == 0:
                             upper_left = [sorted_hit[0] - 1, sorted_hit[1] + 1]
-                            if self.check_if_holes(upper_left, game_state):
+                            if self.check_if_holes(upper_left, False, game_state):
                                 game_state.attempt_spawn(INTERCEPTOR, upper_left)
                     else:
                         lower_right = [sorted_hit[0] - 1, sorted_hit[1] - 1]
-                        if self.check_if_holes(lower_right, game_state):
+                        if self.check_if_holes(lower_right, False, game_state):
                             spawned = game_state.attempt_spawn(INTERCEPTOR, lower_right)
                         if spawned == 0:
                             upper_right = [sorted_hit[0] + 1, sorted_hit[1] + 1]
-                            if self.check_if_holes(upper_right, game_state):
+                            if self.check_if_holes(upper_right, False, game_state):
                                 game_state.attempt_spawn(INTERCEPTOR, upper_right)
 
     def refund_structures(self, unit_type, game_state, include_upgraded=False):
