@@ -287,13 +287,15 @@ class AlgoStrategy(gamelib.AlgoCore):
         Uses remaining structure points to defend lower part of map.
         include_y_offset also offsets in y direction from the middle of board. Does not offset middle turrets.
         """
-        left_edge = [[0, 13], [1, 12], [2, 11], [3, 10], [4, 9], [5, 8], [6, 7], [7, 6], [8, 5]]
-        right_edge = [[27, 13], [26, 12], [25, 11], [24, 10], [23, 9], [22, 8], [21, 7], [20, 6], [19, 5]]
+        left_edge = [[0, 13], [1, 12], [2, 11], [3, 10], [4, 9], [5, 8], [6, 7], [7, 7], [8, 6]]
+        right_edge = [[27, 13], [26, 12], [25, 11], [24, 10], [23, 9], [22, 8], [21, 7], [20, 7], [19, 6]]
         bottom_left = [[7, 8], [9, 8], [11, 8], [10, 6]]
         bottom_right = [[16, 8], [18, 8], [20, 8], [17, 6]]
-        bottom_middle = [[13, 5], [14, 5]]
+        bottom_middle = [[11, 5], [16, 5]]
 
         side_important = [[2, 11], [25, 11]]
+
+        middle_top = [[18, 9], [8, 9]]
 
         game_state.attempt_spawn(TURRET, side_important)
         game_state.attempt_upgrade(side_important)
@@ -302,7 +304,7 @@ class AlgoStrategy(gamelib.AlgoCore):
             left_edge[:] = (loc for loc in left_edge if loc[1] <= 13 - offset_from_edge)
             right_edge[:] = (loc for loc in right_edge if loc[1] <= 13 - offset_from_edge)
 
-        all_locations = [item for pair in zip(left_edge, right_edge) for item in pair] + bottom_middle \
+        all_locations = middle_top + [item for pair in zip(left_edge, right_edge) for item in pair] + bottom_middle \
                         + [item for pair in zip(bottom_left, bottom_right) for item in pair]
 
         gamelib.debug_write(all_locations)
