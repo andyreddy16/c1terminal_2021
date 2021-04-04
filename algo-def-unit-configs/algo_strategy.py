@@ -51,6 +51,7 @@ class AlgoStrategy(gamelib.AlgoCore):
         self.damaged_locations = []
         self.add_supports = False
         self.ready_attack = False
+        self.attacked_in_last_round_and_removed_all = False
         self.potential_hole = []
 
         # needs to be cleared or updated each turn
@@ -117,16 +118,15 @@ class AlgoStrategy(gamelib.AlgoCore):
 
         avg_damage, avg_breached = self.predict_enemy_attack_magnitude(game_state)
 
-        # doesn't really worked if path is blocked
-        if avg_breached + 5 > game_state.my_health or avg_damage > 7:
-            self.send_interceptors_most_attacked(2, game_state)
-
         attack_in_progress = False
         if self.ready_attack and game_state.get_resource(MP, 0) > 9:
             # left is in our view
             enemy_has_most_defense_on_left = self.get_side_enemy_defense(game_state)
             # want to build attack on same side as their defense since it will go opposite side
-            self.build_attack(game_state, left=enemy_has_most_defense_on_left)
+            max_turrets = 1000
+            if game_state.get_resource(SP, 0) < game_state.type_cost(SUPPORT)[SP] * 10 + game_state.type_cost(TURRET)[SP] * 5:
+                max_turrets = 5
+            self.build_attack(game_state, left=enemy_has_most_defense_on_left, max_turrets=max_turrets)
             attack_in_progress = True
             # remove offensive structure if not enough MP for next turn.
             # Do not remove if enemy health is lower than our MP units for next round.
@@ -136,20 +136,27 @@ class AlgoStrategy(gamelib.AlgoCore):
                 self.refund_structures(SUPPORT, game_state, False)
                 self.refund_structures(WALL, game_state, False)
                 self.refund_structures(TURRET, game_state, False)
+                self.attacked_in_last_round_and_removed_all = True
                 self.ready_attack = False
-        elif self.is_ready_to_build_offensive(4, 6, game_state) and len(game_state.turret_locations) != 0:  # added second check so that we don't remove structures twice hopefully
-            self.refund_structures(TURRET, game_state, False)
-            self.refund_structures(WALL, game_state, False)
-            self.ready_attack = True
-            return
+        elif self.is_ready_to_build_offensive(4, 6, game_state) and len(game_state.turret_locations) > 2 and not self.attacked_in_last_round_and_removed_all:
+            if not self.need_to_send_demolisher(game_state):
+                self.refund_structures(TURRET, game_state, False)
+                self.refund_structures(WALL, game_state, False)
+                self.ready_attack = True
+        else:
+            self.attacked_in_last_round_and_removed_all = False
 
-        # if no hole in enemy, send destroyer if attack is eminent
-        any_holes = self.check_if_holes([3, 10], game_state)
-        if not any_holes and game_state.project_future_MP(1) > 9:
+        if self.need_to_send_demolisher(game_state):
+            demolisher_location = [3, 10]
             self.potential_hole = [4, 12]  # to let demolisher pass our defense
-            removed = game_state.attempt_remove(self.potential_hole)
-            if removed == 0:
-                game_state.attempt_spawn(DEMOLISHER, [3, 10])
+            if self.check_if_holes(demolisher_location, game_state):
+                game_state.attempt_remove(demolisher_location)
+                game_state.attempt_spawn(DEMOLISHER, demolisher_location, 2)
+            else:
+                removed = game_state.attempt_remove(self.potential_hole)
+                if removed == 0:
+                    game_state.attempt_remove(demolisher_location)
+                    game_state.attempt_spawn(DEMOLISHER, demolisher_location, 2)
 
         self.add_corner_turrets(True, game_state)
         gamelib.debug_write(attack_in_progress)
@@ -176,7 +183,7 @@ class AlgoStrategy(gamelib.AlgoCore):
         # should fortify most attacked locations, but make sure not to block offense since it will be upgraded units
         # since we are avoiding the edges, for the very front, if y + 2 doesn't work, try x +/- 2
         # could also aim interceptors at those spots (need to make sure speed and pathing works out)
-        self.build_reactive_defense(game_state)
+        self.build_reactive_defense(game_state, attack_soon=(attack_in_progress or self.ready_attack))
 
         if attack_in_progress or self.ready_attack:
             gamelib.debug_write("SP left for defense")
@@ -190,6 +197,10 @@ class AlgoStrategy(gamelib.AlgoCore):
             offset_from_edge = 0
             self.defend_lower_map(offset_from_edge, game_state)
 
+        if self.ready_attack:
+            self.refund_structures(TURRET, game_state, False)
+            self.refund_structures(WALL, game_state, False)
+
         # clear placeholders for next turn stats
         self.num_scored_on = 0
         self.last_turn_damaged = 0
@@ -199,7 +210,13 @@ class AlgoStrategy(gamelib.AlgoCore):
         self.last_turn_enemy_MP = game_state.get_resource(MP, 1)
         self.potential_hole = []
 
-    def build_attack(self, game_state, left=True):
+        # doesn't really worked if path is blocked
+        # if avg_breached + 5 > game_state.my_health or avg_damage > 7:
+        if game_state.project_future_MP(player_index=1) > 12 or game_state.my_health < game_state.project_future_MP(player_index=1):
+            self.send_interceptors_most_attacked(4, game_state)
+            self.ready_attack = False
+
+    def build_attack(self, game_state, left=True, max_turrets=1000):
         left_channel = [[5, 10], [6, 9], [7, 8], [8, 7], [9, 6], [10, 5], [11, 4], [12, 3], [13, 2], [13, 1]]
         left_interceptor = [5, 8]
         left_scout = [12, 1]
@@ -218,11 +235,23 @@ class AlgoStrategy(gamelib.AlgoCore):
             interceptor = right_interceptor
             scout = right_scout
 
-        game_state.attempt_spawn(SUPPORT, channel)
+        for turret in range(max_turrets):
+            if turret < len(channel):
+                game_state.attempt_spawn(SUPPORT, channel[turret])
+            else:
+                break
+
         game_state.attempt_spawn(WALL, channel)  # in case not enough SP
 
-        game_state.attempt_spawn(INTERCEPTOR, interceptor)  # not sure if needed all the time
+        # game_state.attempt_spawn(INTERCEPTOR, interceptor)  # not sure if needed all the time
         game_state.attempt_spawn(SCOUT, scout, 1000)
+
+    def need_to_send_demolisher(self, game_state):
+        demolisher_location = [3, 10]
+        any_holes = self.check_if_holes(demolisher_location, game_state)
+        enemy_walls = len(game_state.game_map.get_enemy_unit_locations(WALL))
+        enemy_turrets = len(game_state.game_map.get_enemy_unit_locations(TURRET))
+        return (not any_holes or enemy_turrets + enemy_walls > 25) and game_state.project_future_MP(0) > 9
 
     def check_if_holes(self, start_location, game_state):
         """
@@ -260,6 +289,11 @@ class AlgoStrategy(gamelib.AlgoCore):
         bottom_right = [[16, 8], [18, 8], [20, 8], [17, 6]]
         bottom_middle = [[13, 5], [14, 5]]
 
+        side_important = [[2, 11], [25, 11]]
+
+        game_state.attempt_spawn(TURRET, side_important)
+        game_state.attempt_upgrade(side_important)
+
         if include_y_offset:
             left_edge[:] = (loc for loc in left_edge if loc[1] <= 13 - offset_from_edge)
             right_edge[:] = (loc for loc in right_edge if loc[1] <= 13 - offset_from_edge)
@@ -275,6 +309,9 @@ class AlgoStrategy(gamelib.AlgoCore):
                 location[0] += offset_from_edge
             elif not no_right_offset:
                 location[0] -= offset_from_edge
+
+        if [3, 10] in all_locations:
+            all_locations.remove([3, 10])
 
         # build turrets, and then change to walls if no more sp
         game_state.attempt_spawn(TURRET, all_locations)
@@ -364,25 +401,31 @@ class AlgoStrategy(gamelib.AlgoCore):
 
     def send_interceptors_most_attacked(self, num, game_state):
         sorted_hits = self.get_sorted_hits(game_state)
+        spawned = 0
         for i in range(num):
             if i < len(sorted_hits):
                 sorted_hit = sorted_hits[i]
-                spawned = game_state.attempt_spawn(INTERCEPTOR, sorted_hit)
+                if self.check_if_holes(sorted_hit, game_state):
+                    spawned = game_state.attempt_spawn(INTERCEPTOR, sorted_hit)
                 if spawned == 0:
                     # attempt to spawn close to location on board
                     is_left = sorted_hit[0] <= 13
                     if is_left:
                         lower_left = [sorted_hit[0] + 1, sorted_hit[1] - 1]
-                        spawned_lower = game_state.attempt_spawn(INTERCEPTOR, lower_left)
-                        if spawned_lower == 0:
+                        if self.check_if_holes(lower_left, game_state):
+                            spawned = game_state.attempt_spawn(INTERCEPTOR, lower_left)
+                        if spawned == 0:
                             upper_left = [sorted_hit[0] - 1, sorted_hit[1] + 1]
-                            game_state.attempt_spawn(INTERCEPTOR, upper_left)
+                            if self.check_if_holes(upper_left, game_state):
+                                game_state.attempt_spawn(INTERCEPTOR, upper_left)
                     else:
                         lower_right = [sorted_hit[0] - 1, sorted_hit[1] - 1]
-                        spawned_lower = game_state.attempt_spawn(INTERCEPTOR, lower_right)
-                        if spawned_lower == 0:
+                        if self.check_if_holes(lower_right, game_state):
+                            spawned = game_state.attempt_spawn(INTERCEPTOR, lower_right)
+                        if spawned == 0:
                             upper_right = [sorted_hit[0] + 1, sorted_hit[1] + 1]
-                            game_state.attempt_spawn(INTERCEPTOR, upper_right)
+                            if self.check_if_holes(upper_right, game_state):
+                                game_state.attempt_spawn(INTERCEPTOR, upper_right)
 
     def refund_structures(self, unit_type, game_state, include_upgraded=False):
         remove_locs = []
@@ -686,7 +729,7 @@ class AlgoStrategy(gamelib.AlgoCore):
             gamelib.debug_write(wall_loc)
             spawned = game_state.attempt_spawn(WALL, wall_loc)
 
-    def build_reactive_defense(self, game_state):
+    def build_reactive_defense(self, game_state, attack_soon: bool):
         """
         This function builds reactive defenses based on where the enemy scored on us from.
         We can track where the opponent scored by looking at events in action frames 
@@ -696,22 +739,27 @@ class AlgoStrategy(gamelib.AlgoCore):
         # since we are avoiding the edges, for the very front, if y + 2 doesn't work, try x +/- 2
         # could also aim interceptors at those spots (need to make sure speed and pathing works out)
 
+        locations_do_not_build = [3, 10]
+        if attack_soon:
+            locations_do_not_build = [[4, 11], [5, 11], [4, 12], [24, 12], [24, 11], [22,11]]
+
         sorted_hits = self.get_sorted_hits(game_state)
 
         for location in sorted_hits:
             # Build turret one space above so that it doesn't block our own edge spawn locations
             x, y = location  # converted into tuple for dictionary hashing
             build_location = [x, y + 2]
-            if not game_state.can_spawn(WALL, build_location):
+            if not game_state.can_spawn(WALL, build_location) or build_location in locations_do_not_build:
                 x_shift = 2
                 if x >= 14:
                     x_shift = -2
                 build_location = [x + x_shift, y + 1]
-                if not game_state.can_spawn(WALL, build_location):
+                if not game_state.can_spawn(WALL, build_location) or build_location in locations_do_not_build:
                     build_location = [x + x_shift, y]
 
-            game_state.attempt_spawn(TURRET, build_location)
-            game_state.attempt_spawn(WALL, build_location)  # at least a wall if the other doesn't work
+            if build_location not in locations_do_not_build:
+                game_state.attempt_spawn(TURRET, build_location)
+                game_state.attempt_spawn(WALL, build_location)  # at least a wall if the other doesn't work
 
     def get_sorted_hits(self, game_state):
         """
