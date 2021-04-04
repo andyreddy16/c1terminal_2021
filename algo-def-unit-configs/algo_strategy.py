@@ -48,8 +48,10 @@ class AlgoStrategy(gamelib.AlgoCore):
         # This is a good place to do initial setup
 
         self.scored_on_locations = []
+        self.damaged_locations = []
         self.add_supports = False
         self.ready_attack = False
+        self.potential_hole = []
 
         # needs to be cleared or updated each turn
         self.mobile_units_enemy_last_turn = {
@@ -59,9 +61,11 @@ class AlgoStrategy(gamelib.AlgoCore):
         }
         self.last_turn_enemy_MP = 0
         self.num_scored_on = 0
+        self.last_turn_damaged = 0
 
         # keep for entire game
         self.MP_per_scored_on = []
+        self.MP_per_damage = []
         self.MP_per_enemy_scouts_deployed = []
 
     def on_turn(self, turn_state):
@@ -99,24 +103,22 @@ class AlgoStrategy(gamelib.AlgoCore):
         """
 
         # store statistics for when we get scored on and enemy's MP during that turn
+        gamelib.debug_write("Last turn, was breached {0} times.", self.num_scored_on)
+        gamelib.debug_write("Last turn, was damaged {0} times.", self.num_scored_on)
+
         if self.num_scored_on > 0:
             self.MP_per_scored_on.append((self.num_scored_on, self.last_turn_enemy_MP))
+
+        if self.last_turn_damaged > 0:
+            self.MP_per_damage.append((self.last_turn_damaged, self.last_turn_enemy_MP))
 
         if self.mobile_units_enemy_last_turn[SCOUT] > 0:
             self.MP_per_enemy_scouts_deployed.append((self.mobile_units_enemy_last_turn[SCOUT], self.last_turn_enemy_MP))
 
-        # clear placeholders for next turn stats
-        self.num_scored_on = 0
-        self.mobile_units_enemy_last_turn[SCOUT] = 0
-        self.mobile_units_enemy_last_turn[DEMOLISHER] = 0
-        self.mobile_units_enemy_last_turn[INTERCEPTOR] = 0
-        self.last_turn_enemy_MP = game_state.get_resource(MP, 1)
+        avg_damage, avg_breached = self.predict_enemy_attack_magnitude(game_state)
 
-        attack_magnitude = 10
-        probability_of_enemy_attack = self.predict_enemy_attack(attack_magnitude, game_state)
-
-        # send interceptors towards most attacked locations, not really working yet, should also check if section is destroyed a lot
-        if probability_of_enemy_attack > 0.9:
+        # doesn't really worked if path is blocked
+        if avg_breached + 5 > game_state.my_health or avg_damage > 7:
             self.send_interceptors_most_attacked(2, game_state)
 
         attack_in_progress = False
@@ -135,15 +137,19 @@ class AlgoStrategy(gamelib.AlgoCore):
                 self.refund_structures(WALL, game_state, False)
                 self.refund_structures(TURRET, game_state, False)
                 self.ready_attack = False
-        else:
-            walls = 6
-            supports = 10 - walls  # 10 represents number of support units needed to build attack
+        elif self.is_ready_to_build_offensive(4, 6, game_state) and len(game_state.turret_locations) != 0:  # added second check so that we don't remove structures twice hopefully
+            self.refund_structures(TURRET, game_state, False)
+            self.refund_structures(WALL, game_state, False)
+            self.ready_attack = True
+            return
 
-            if self.is_ready_to_build_offensive(supports, walls, game_state):
-                self.refund_structures(TURRET, game_state, False)
-                self.refund_structures(WALL, game_state, False)
-                self.ready_attack = True
-                return
+        # if no hole in enemy, send destroyer if attack is eminent
+        any_holes = self.check_if_holes([3, 10], game_state)
+        if not any_holes and game_state.project_future_MP(1) > 9:
+            self.potential_hole = [4, 12]  # to let demolisher pass our defense
+            removed = game_state.attempt_remove(self.potential_hole)
+            if removed == 0:
+                game_state.attempt_spawn(DEMOLISHER, [3, 10])
 
         self.add_corner_turrets(True, game_state)
         gamelib.debug_write(attack_in_progress)
@@ -155,6 +161,8 @@ class AlgoStrategy(gamelib.AlgoCore):
         # only block if not attacking
         if not attack_in_progress:
             other_walls = [[1, 12], [2, 12], [3, 12], [4, 12], [23, 12], [24, 12], [25, 12], [26, 12]]
+            if len(self.potential_hole) != 0:
+                other_walls.remove(self.potential_hole)
             game_state.attempt_spawn(WALL, other_walls)
 
         # always block middle
@@ -182,6 +190,15 @@ class AlgoStrategy(gamelib.AlgoCore):
             offset_from_edge = 0
             self.defend_lower_map(offset_from_edge, game_state)
 
+        # clear placeholders for next turn stats
+        self.num_scored_on = 0
+        self.last_turn_damaged = 0
+        self.mobile_units_enemy_last_turn[SCOUT] = 0
+        self.mobile_units_enemy_last_turn[DEMOLISHER] = 0
+        self.mobile_units_enemy_last_turn[INTERCEPTOR] = 0
+        self.last_turn_enemy_MP = game_state.get_resource(MP, 1)
+        self.potential_hole = []
+
     def build_attack(self, game_state, left=True):
         left_channel = [[5, 10], [6, 9], [7, 8], [8, 7], [9, 6], [10, 5], [11, 4], [12, 3], [13, 2], [13, 1]]
         left_interceptor = [5, 8]
@@ -206,6 +223,31 @@ class AlgoStrategy(gamelib.AlgoCore):
 
         game_state.attempt_spawn(INTERCEPTOR, interceptor)  # not sure if needed all the time
         game_state.attempt_spawn(SCOUT, scout, 1000)
+
+    def check_if_holes(self, start_location, game_state):
+        """
+        Returns true if path reaches other side.
+        """
+        path = game_state.find_path_to_edge(start_location)
+        if not path:
+            return False
+
+        found_edge = False
+        our_hole = [4, 12]
+        need_to_re_add_hole = False
+        if game_state.contains_stationary_unit(our_hole):
+            game_state.game_map.remove_unit(our_hole)
+            need_to_re_add_hole = True
+
+        for loc in path:
+            if game_state.game_map.check_if_on_enemy_edge(loc):
+                found_edge = True
+
+        if need_to_re_add_hole:
+            game_state.game_map.add_unit(WALL, our_hole)
+
+        return found_edge
+
 
     def defend_lower_map(self, offset_from_edge: int, game_state, include_y_offset=True, no_left_offset=False, no_right_offset=False):
         """
@@ -252,11 +294,46 @@ class AlgoStrategy(gamelib.AlgoCore):
                 right_count += 1
         return left_count > right_count
 
-    def predict_enemy_attack(self, attack_magnitude, game_state):
+    def predict_enemy_attack_magnitude(self, game_state) -> (float, float):
         """
-        Gets probability of enemy attack at a certain magnitude * effectiveness
+        Returns predicted magnitude of enemy attack (avg_damage, avg_breached)
         :param game_state: game state
         :param attack_magnitude: number of scouts deployed
+        """
+        enemy_current_mp = game_state.get_resource(MP, 1)
+
+        total_damage_sum = 0
+        num_damage_stats = 0
+
+        # get damage usually inflicted at enemy_current_mp +/- 1
+        for mp_per_damage in self.MP_per_damage:
+            damage, mp = mp_per_damage
+            if abs(mp - enemy_current_mp) <= 1:
+                total_damage_sum += damage
+                num_damage_stats += 1
+
+        if num_damage_stats == 0:
+            avg_damage = 0
+        else:
+            avg_damage = total_damage_sum / num_damage_stats
+
+        num_breached_sum = 0
+        num_breached_stats = 0
+
+        # get number of locations usually breached at enemy_current_mp +/- 1
+        for mp_per_scored_on in self.MP_per_scored_on:
+            num_scored_on, mp = mp_per_scored_on
+            if abs(mp - enemy_current_mp) <= 1:
+                num_breached_sum += damage
+                num_breached_stats += 1
+
+        if num_breached_stats == 0:
+            avg_breached = 0
+        else:
+            avg_breached = num_breached_sum / num_breached_stats
+
+        return avg_damage, avg_breached
+
         """
         if len(self.MP_per_enemy_scouts_deployed) == 0:
             return 0
@@ -283,6 +360,7 @@ class AlgoStrategy(gamelib.AlgoCore):
         gamelib.debug_write("Effectiveness {0}", effectiveness)
 
         return num_attacks / len(self.MP_per_enemy_scouts_deployed) * effectiveness
+        """
 
     def send_interceptors_most_attacked(self, num, game_state):
         sorted_hits = self.get_sorted_hits(game_state)
@@ -741,6 +819,9 @@ class AlgoStrategy(gamelib.AlgoCore):
         state = json.loads(turn_string)
         events = state["events"]
         breaches = events["breach"]
+        damages = events["damage"]
+
+        stationary_units = [0, 1, 2]
 
         turn_info = state["turnInfo"]
         phase = turn_info[0]
@@ -753,6 +834,16 @@ class AlgoStrategy(gamelib.AlgoCore):
             self.mobile_units_enemy_last_turn[SCOUT] = len(p2_units[3])
             self.mobile_units_enemy_last_turn[DEMOLISHER] = len(p2_units[4])
             self.mobile_units_enemy_last_turn[INTERCEPTOR] = len(p2_units[5])
+
+        for damage in damages:
+            location = damage[0]
+            damage_taken = damage[1]
+            unit_type = damage[2]
+            player = damage[4]
+            if player == 1 and unit_type in stationary_units:
+                gamelib.debug_write("Got damage at: {}".format(location))
+                self.damaged_locations.append(location)
+                self.last_turn_damaged += damage_taken
 
         for breach in breaches:
             location = breach[0]

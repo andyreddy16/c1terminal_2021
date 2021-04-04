@@ -120,6 +120,11 @@ class GameMap:
         edges = self.get_edges()
         return edges[quadrant_description]
 
+    def check_if_on_enemy_edge(self, location):
+        edges = self.get_edges()
+        enemy_edges = edges[self.TOP_LEFT] + edges[self.TOP_RIGHT]
+        return location in enemy_edges
+
     def get_edges(self):
         """Gets all of the edges and their edge locations
 
