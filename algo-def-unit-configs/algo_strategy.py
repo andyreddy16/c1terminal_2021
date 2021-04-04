@@ -224,11 +224,13 @@ class AlgoStrategy(gamelib.AlgoCore):
 
         # doesn't really worked if path is blocked
         # if avg_breached + 5 > game_state.my_health or avg_damage > 7:
+        """
         if game_state.project_future_MP(player_index=1) > 12 or game_state.my_health < game_state.project_future_MP(player_index=1):
             gamelib.debug_write("Sending interceptors.")
             self.send_interceptors_most_attacked(4, game_state)
             gamelib.debug_write("Finished interceptors.")
             self.ready_attack = False
+        """
 
         gamelib.debug_write("Finished!")
 
@@ -769,7 +771,16 @@ class AlgoStrategy(gamelib.AlgoCore):
         if attack_soon:
             locations_do_not_build = [[4, 11], [5, 11], [4, 12], [24, 12], [24, 11], [22,11]]
 
-        sorted_hits = self.get_sorted_hits(game_state)
+        sorted_hits = self.get_sorted_hits(self.scored_on_locations, game_state)
+        sorted_hits += self.get_sorted_hits(self.damaged_locations, game_state)
+
+        if [1, 13] in sorted_hits:
+            game_state.attempt_spawn(TURRET, [1, 13])
+            game_state.attempt_spawn(WALL, [1, 13])
+
+        if [26, 13] in sorted_hits:
+            game_state.attempt_spawn(TURRET, [26, 13])
+            game_state.attempt_spawn(WALL, [26, 13])
 
         for location in sorted_hits:
             # Build turret one space above so that it doesn't block our own edge spawn locations
@@ -787,12 +798,12 @@ class AlgoStrategy(gamelib.AlgoCore):
                 game_state.attempt_spawn(TURRET, build_location)
                 game_state.attempt_spawn(WALL, build_location)  # at least a wall if the other doesn't work
 
-    def get_sorted_hits(self, game_state):
+    def get_sorted_hits(self, locations, game_state):
         """
         Returns a list of locations by most hit to least hit
         """
         counts = dict()
-        for i in self.scored_on_locations:
+        for i in locations:
             loc = tuple(i)
             counts[loc] = counts.get(loc, 0) + 1
 
