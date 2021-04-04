@@ -26,9 +26,9 @@ class AlgoStrategy(gamelib.AlgoCore):
         random.seed(seed)
         gamelib.debug_write('Random seed: {}'.format(seed))
         # Locations passed by reference to GameState. Should only be updated in GameState
-        self.turret_locations = [[0, 13]]
-        self.wall_locations = [[0, 13]]
-        self.support_locations = [[0, 13]]
+        self.turret_locations = []
+        self.wall_locations = []
+        self.support_locations = []
 
     def on_game_start(self, config):
         """ 
@@ -85,7 +85,10 @@ class AlgoStrategy(gamelib.AlgoCore):
         If there are no stationary units to attack in the front, we will send Scouts to try and score quickly.
         """
         if self.ready_attack:
-            self.build_attack(game_state)
+            # left is in our view
+            enemy_has_most_defense_on_left = self.get_side_enemy_defense(game_state)
+            # want to build attack on same side as their defense since it will go opposite side
+            self.build_attack(game_state, left=enemy_has_most_defense_on_left)
             # maybe move somewhere else if we want to attack two times in a row
             self.refund_structures(SUPPORT, game_state, False)
             self.refund_structures(WALL, game_state, False)
@@ -108,26 +111,49 @@ class AlgoStrategy(gamelib.AlgoCore):
 
         # self.upgrade_top_turrets(4, game_state)
 
-        if game_state.turn_number > 3 and game_state.get_resource(SP, 0) > 30:
-            interceptors_loc = self.create_interceptor_shooter(8, True, True, game_state)
+        # if game_state.turn_number > 3 and game_state.get_resource(SP, 0) > 30:
+        # interceptors_loc = self.create_interceptor_shooter(8, True, True, game_state)
 
         self.build_reactive_defense(game_state)
 
-        gamelib.debug_write("POSITIONS")
-        gamelib.debug_write(game_state.turret_locations)
-
-    def build_attack(self, game_state):
+    def build_attack(self, game_state, left=True):
         left_channel = [[5, 10], [6, 9], [7, 8], [8, 7], [9, 6], [10, 5], [11, 4], [12, 3], [13, 2], [13, 1]]
-        left_channel.reverse()
-        game_state.attempt_spawn(SUPPORT, left_channel)
+        left_interceptor = [5, 8]
+        left_scout = [12, 1]
+        left_channel.reverse()  # reverse so supports start from bottom (might not need to reverse if not destroyed)
+        right_channel = [[22, 10], [21, 9], [20, 8], [19, 7], [18, 6], [17, 5], [16, 4], [15, 3], [14, 2], [14, 1]]
+        right_interceptor = [22, 8]
+        right_scout = [15, 1]
+        right_channel.reverse()
 
-        game_state.attempt_spawn(WALL, left_channel)  # in case not enough SP
+        if left:
+            channel = left_channel
+            interceptor = left_interceptor
+            scout = left_scout
+        else:
+            channel = right_channel
+            interceptor = right_interceptor
+            scout = right_scout
 
-        interceptor_loc = [5, 8]
-        game_state.attempt_spawn(INTERCEPTOR, interceptor_loc)
+        game_state.attempt_spawn(SUPPORT, channel)
+        game_state.attempt_spawn(WALL, channel)  # in case not enough SP
 
-        scout_loc = [12, 1]
-        game_state.attempt_spawn(SCOUT, scout_loc, 1000)
+        game_state.attempt_spawn(INTERCEPTOR, interceptor)  # not sure if needed all the time
+        game_state.attempt_spawn(SCOUT, scout, 1000)
+
+    def get_side_enemy_defense(self, game_state) -> bool:
+        turret_locations = game_state.game_map.get_enemy_unit_locations(TURRET)
+        wall_locations = game_state.game_map.get_enemy_unit_locations(WALL)
+        support_locations = game_state.game_map.get_enemy_unit_locations(SUPPORT)
+        all_locations = turret_locations + wall_locations + support_locations
+        left_count = 0
+        right_count = 0
+        for location in all_locations:
+            if location[0] <= 13:
+                left_count += 1
+            else:
+                right_count += 1
+        return left_count > right_count
 
     def refund_structures(self, unit_type, game_state, include_upgraded=False):
         remove_locs = []
@@ -197,7 +223,6 @@ class AlgoStrategy(gamelib.AlgoCore):
             if upgraded == num:
                 break
             upgraded += game_state.attempt_upgrade(loc)
-
 
     def block_middle_with_walls(self, depth, length, game_state):
         """

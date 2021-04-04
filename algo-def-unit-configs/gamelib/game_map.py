@@ -188,6 +188,19 @@ class GameMap:
         x, y = location
         self.__map[x][y] = []
 
+    def get_enemy_unit_locations(self, unit_type):
+        locations = []
+        for y in range(14, self.ARENA_SIZE):
+            half_board = self.HALF_ARENA
+            row_size = (self.ARENA_SIZE - 1 - y) + 1
+            startx = half_board - row_size
+            endx = startx + (2 * row_size) - 1
+            for x in range(startx, endx + 1):
+                for unit in self.__map[x][y]:
+                    if unit.unit_type == unit_type:
+                        locations.append([x, y])
+        return locations
+
     def get_locations_in_range(self, location, radius):
         """Gets locations in a circular area around a location
 
